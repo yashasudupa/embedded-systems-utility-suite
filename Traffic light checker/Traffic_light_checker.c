@@ -5,15 +5,6 @@
 
 #define SIZE 100
 
-char* check_next_state(char *);
-
-char* check_next_state(char *rest){
-    
-    char *token = strtok_r(rest, " ", &rest);
-    printf("%s 1\n", rest);
-    return token;
-}
-
 int main(int argc, char *argv[]){
 
     char line[SIZE];
