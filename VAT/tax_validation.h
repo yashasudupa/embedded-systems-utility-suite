@@ -5,5 +5,4 @@
 #include <stdlib.h>
 
 int tax_validation (char *);
-#define r 11
 #endif

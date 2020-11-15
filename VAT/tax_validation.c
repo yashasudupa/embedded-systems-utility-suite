@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "tax_validation.h"
+#define r 11
 
 int tax_validation (char *line){
     
