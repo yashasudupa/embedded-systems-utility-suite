@@ -1,0 +1,49 @@
+﻿  Run-time-stats-utils.c
+  main_full.c
+  main_blinky.c
+  tasks.c
+  queue.c
+  port.c
+  list.c
+  main.c
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(156): warning C4022: 'xTimerCreate': pointer mismatch for actual parameter 4
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(156): warning C4047: '=': 'long' differs in levels of indirection from 'TimerHandle_t'
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(158): warning C4047: '==': 'long' differs in levels of indirection from 'void *'
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(164): warning C4022: 'xTimerGenericCommand': pointer mismatch for actual parameter 1
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(168): warning C4022: 'xTimerCreate': pointer mismatch for actual parameter 4
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(247): warning C4101: 'lArrayIndex': unreferenced local variable
+  timerdemo.c
+  TaskNotify.c
+  semtest.c
+  recmutex.c
+  QueueSetPolling.c
+  QueueSet.c
+  QueueOverwrite.c
+  QPeek.c
+  PollQ.c
+  IntSemTest.c
+  integer.c
+  GenQTest.c
+  Generating Code...
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(179): warning C4702: unreachable code
+  Compiling...
+  flop.c
+  EventGroupsDemo.c
+  dynamic.c
+  death.c
+  countsem.c
+  blocktim.c
+  BlockQ.c
+  timers.c
+  heap_5.c
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\source\portable\memmang\heap_5.c(340): warning C4146: unary minus operator applied to unsigned type, result still unsigned
+  event_groups.c
+  croutine.c
+  trcUser.c
+  trcKernelPort.c
+  trcKernel.c
+  trcHardwarePort.c
+  trcBase.c
+  Generating Code...
+trcBase.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/SAFESEH' specification
+  WIN32.vcxproj -> E:\Free RTOS - RTS\FreeRTOSV8.2.3\FreeRTOSV8.2.3\FreeRTOS\Demo\WIN32-MSVC\.\Debug\RTOSDemo.exe

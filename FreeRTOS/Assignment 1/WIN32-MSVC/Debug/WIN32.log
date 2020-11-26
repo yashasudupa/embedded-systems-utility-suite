@@ -1,0 +1,5 @@
+﻿  main.c
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(148): warning C4100: 'p': unreferenced formal parameter
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(159): warning C4100: 'p': unreferenced formal parameter
+e:\free rtos - rts\freertosv8.2.3\freertosv8.2.3\freertos\demo\win32-msvc\main.c(144): warning C4702: unreachable code
+  WIN32.vcxproj -> E:\Free RTOS - RTS\FreeRTOSV8.2.3\FreeRTOSV8.2.3\FreeRTOS\Demo\WIN32-MSVC\.\Debug\RTOSDemo.exe
