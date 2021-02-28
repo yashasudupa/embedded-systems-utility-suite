@@ -2,7 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
-#include <regex>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -13,38 +13,26 @@ void find_length (std::string fileName){
     std::ifstream is (fileName, std::ifstream::binary);
     if (is) {
 
-        std::string str;
-        while (std::getline(is, str)) {
-            std::cout << str << "\n";
-        } 
+        std::string line;
+        std::vector<int> length;
+        while (std::getline(is, line)) {
+            std::cout << line << std::endl;
+            int pos = line.find(':');
+            if(pos == EOF) 
+                length.back() += line.size();
+            else
+                length.push_back(line.size());        
+        }
 
-        // get length of file:
-        std::cout << typeid(is.end).name() << std::endl;
-        std::cout << "Going out" << std::endl;
-        /*
-        is.seekg (0, is.end);
-        int length = is.tellg();
-        is.seekg (0, is.beg);
-
-        char *buffer = new char [length];
-
-        std::cout << "Reading " << length << " characters... ";
-        // read data as a block:
-        is.read (buffer,length);
-
-        if (is)
-        std::cout << "all characters read successfully." << std::endl;
-        else
-        std::cout << "error: only " << is.gcount() << " could be read";
-
-        is.close();
-
-        // ...buffer contains the entire file...
-
-        std::cout << "Going out" << std::endl;
-
-        delete[] buffer;
-        */
+        std::vector<int> row_length;
+        row_length.push_back(length.front());
+        for (std::vector<int>::iterator it = length.begin() + 1; it != length.end() - 1; ++it){
+            //row_length.push_back(*it + *(it + 1));
+            row_length.push_back(row_length.back() + *it);
+        }
+        for (std::vector<int>::iterator it = row_length.begin(); it != row_length.end(); ++it){
+            std::cout << *it << std::endl;
+        }
     }
 }
 
