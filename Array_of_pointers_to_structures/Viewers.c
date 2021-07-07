@@ -17,14 +17,19 @@ int count_views(Viewer **viewers, int viewers_size, char *video_name)
     // Waiting to be implemented
     
     int count = 0;
-    for (int i=0; i < viewers_size; ++i)
-    {
-        if(!(strcmp(viewers[i]->watched_videos->name, video_name)))
-        {
-            count += 1;
-        }
-    }
     
+    for (int i=0; i<viewers_size; i++)
+    {
+        int no_of_videos = viewers[i]->watched_videos_size;
+        for (int j=0; j<no_of_videos; j++)
+        {
+            if(!(strcmp(viewers[i]->watched_videos[j].name, video_name)))
+            {
+                count += 1;
+            }
+        }
+        
+    }
     return count;
 }
 
