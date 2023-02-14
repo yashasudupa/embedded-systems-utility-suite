@@ -1,0 +1,196 @@
+#include "DataStorageWrapper.h"
+
+DataStorageWrapper::DataStorageWrapper( std::string gatewayId, std::string cloudAppName ):
+	m_gatewayId( gatewayId ),
+    m_cloudAppName( cloudAppName )
+{
+	m_exceptionLoggerObj = m_exceptionLoggerObj->GetInstance();
+}
+
+DataStorageWrapper::~DataStorageWrapper()
+{
+	
+}
+
+void DataStorageWrapper::ExecuteCommand( nlohmann::json dataJson )
+{
+    std::stringstream logg;
+	//validate JSON return structure try catch
+	//dataJson.erase( dataJson.find( COMMAND_INFO ) );
+	
+    nlohmann::json tempJson = dataJson[COMMAND_INFO];
+    
+    if( !tempJson.contains( COMMAND_SCHEMA ) )
+    {
+        logg.str("");
+        logg << "DataStorageWrapper::FormatAndStoreTelemetry  tempJson : " << tempJson << ",  Message : 'commandschema' not found in respected tempJson";
+        m_exceptionLoggerObj->LogError( logg.str() );
+        return ;
+    }
+    
+    std::string commandSchema = tempJson[COMMAND_SCHEMA];
+    
+    logg.str("");
+    logg << "DataStorageWrapper::ExecuteCommand()  dataJson : " << dataJson << "commandSchema : " << commandSchema << std::endl;
+    m_exceptionLoggerObj->LogDebug( logg.str() );
+    
+	if( commandSchema == "telemetry" )
+	{
+		FormatAndStoreTelemetry( dataJson );
+	}
+	if( commandSchema == "alert" )
+	{
+		FormatAndStoreAlert( dataJson );
+	}
+}
+
+bool DataStorageWrapper::FormatAndStoreTelemetry( nlohmann::json dataJson )
+{
+	std::stringstream logg;
+	try
+	{
+		if( !dataJson.contains( DEVICE_ID ) )
+		{
+			logg.str("");
+			logg << "DataStorageWrapper::FormatAndStoreTelemetry  GatewayID : " << m_gatewayId << ",  Message : 'device_id' not found in respected json";
+			m_exceptionLoggerObj->LogError( logg.str() );
+			return false;
+		}
+		
+		if( !dataJson.contains( DATA ) )
+		{
+			logg.str("");
+			logg << "DataStorageWrapper::FormatAndStoreTelemetry  GatewayID : " << m_gatewayId << ",  Message : 'data' not found in respected json";
+			m_exceptionLoggerObj->LogError( logg.str() );
+			return false;
+		}
+		
+		std::string deviceId = dataJson[DEVICE_ID];
+		auto it = m_cachedTelemetryMap.find( deviceId );
+		CACHED_ALERT_TELEMETRY_STRUCT* cachedTelemetryObj;
+		
+		if( it == m_cachedTelemetryMap.end() )
+		{
+			cachedTelemetryObj = new CACHED_ALERT_TELEMETRY_STRUCT;
+			m_cachedTelemetryMap[deviceId] = cachedTelemetryObj;	
+			cachedTelemetryObj->fileCount = 0;
+            
+			cachedTelemetryObj->jsonObj[DEVICE_ID] = deviceId;
+			cachedTelemetryObj->jsonObj["app"] = m_cloudAppName;
+			cachedTelemetryObj->jsonObj[TYPE] = CACHED_TELEMETRY;
+			cachedTelemetryObj->fileName = CACHED_TELEMERTY_PATH + deviceId + "_" + GetTimeStampInEpoch() + ".json";
+		}
+		else
+		{
+			cachedTelemetryObj = it->second;
+		}
+		
+		nlohmann::json cachedFormatJson;
+		cachedFormatJson = dataJson["data"];
+		cachedFormatJson += dataJson["latest"];
+		
+		for ( auto& x : cachedFormatJson )
+		{
+			cachedTelemetryObj->jsonObj[DATA].push_back( x );
+		}
+
+		cachedTelemetryObj->fileCount++; 
+		WriteConfiguration( cachedTelemetryObj->fileName, cachedTelemetryObj->jsonObj );
+		
+		if( cachedTelemetryObj->fileCount >= FILE_COUNT )
+		{
+			cachedTelemetryObj->fileCount = 0;
+			cachedTelemetryObj->jsonObj[DATA].clear();
+			cachedTelemetryObj->fileName = CACHED_TELEMERTY_PATH + deviceId + "_" + GetTimeStampInEpoch() + ".json";
+		} 
+		
+		return true;
+	}
+	catch(nlohmann::json::exception &e)
+	{
+		logg.str("");
+		logg << "DataStorageWrapper::FormatAndStoreTelemetry  GatewayID : " << m_gatewayId << ",  Message : Error code :  " << e.id << " Error Messag : " << e.what();
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "DataStorageWrapper::FormatAndStoreTelemetry  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	return false;
+}
+
+bool DataStorageWrapper::FormatAndStoreAlert( nlohmann::json dataJson )
+{
+	std::stringstream logg;
+	try
+	{
+		if( !dataJson.contains( DEVICE_ID ) )
+		{
+			logg.str("");
+			logg << "DataStorageWrapper::FormatAndStoreAlert  GatewayID : " << m_gatewayId << ",  Message : 'device_id' not found in respected json. JSON : " << dataJson;
+			m_exceptionLoggerObj->LogError( logg.str() );
+			return false;
+		}
+		
+		if( !dataJson.contains( DATA ) )
+		{
+			logg.str("");
+			logg << "DataStorageWrapper::FormatAndStoreAlert  GatewayID : " << m_gatewayId << ",  Message : 'data' not found in respected json. JSON : " << dataJson;
+			m_exceptionLoggerObj->LogError( logg.str() );
+			return false;
+		}
+		
+		
+		std::string deviceId = dataJson[DEVICE_ID];
+		auto it = m_cachedAlertMap.find( deviceId );
+		CACHED_ALERT_TELEMETRY_STRUCT* cachedAlertObj;
+		
+		if( it == m_cachedAlertMap.end() )
+		{
+			cachedAlertObj = new CACHED_ALERT_TELEMETRY_STRUCT;
+			m_cachedAlertMap[deviceId] = cachedAlertObj;	
+			
+			cachedAlertObj->fileCount = 0;
+			cachedAlertObj->jsonObj[DEVICE_ID] = deviceId;
+			cachedAlertObj->jsonObj[TYPE] = CACHED_ALERT;
+			cachedAlertObj->fileName = CACHED_ALERT_PATH + deviceId + "_" + GetTimeStampInEpoch() + ".json";
+		}
+		else
+		{
+			cachedAlertObj = it->second;
+		}
+		
+		nlohmann::json cachedFormatJson;
+		cachedFormatJson = dataJson["data"];
+		for ( auto& x : cachedFormatJson )
+		{
+			cachedAlertObj->jsonObj[DATA].push_back( x );
+		}
+		cachedAlertObj->fileCount++;
+		WriteConfiguration( cachedAlertObj->fileName, cachedAlertObj->jsonObj );
+		
+		if( cachedAlertObj->fileCount >= FILE_COUNT )
+		{
+			cachedAlertObj->fileCount = 0;
+			cachedAlertObj->jsonObj[DATA].clear();
+			cachedAlertObj->fileName = CACHED_ALERT_PATH + deviceId + "_" + GetTimeStampInEpoch() + ".json";
+		} 
+		
+		return true;
+	}
+	catch(nlohmann::json::exception &e)
+	{
+		logg.str("");
+		logg << "DataStorageWrapper::FormatAndStoreAlert  GatewayID : " << m_gatewayId << ",  Message : Error code :  " << e.id << " Error Messag : " << e.what();
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "DataStorageWrapper::FormatAndStoreAlert  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	return false;
+}

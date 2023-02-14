@@ -1,0 +1,33 @@
+#ifndef DataCacherManager_h
+#define DataCacherManager_h 1
+
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include "Common.h"
+#include "LocalBrokerCommunicationManager.h"
+#include "DataStorageWrapper.h"
+#include "FileUploadWrapper.h"
+
+class DataCacherManager
+{
+public:
+	DataCacherManager( std::string gatewayId, std::string cloudAppName );
+	~DataCacherManager();
+	void ReceiveSubscribedData( std::string data );
+	void ReceiveCachedData( nlohmann::json jsonObj );
+	
+private:
+	void InitDataCacherManager();
+	
+private:
+	std::string m_gatewayId;
+	std::string m_deviceId;
+	std::string m_cloudAppName;
+	
+	LocalBrokerCommunicationManager *m_localBrokerCommObj;
+	DataStorageWrapper *m_dataStorageWrapperObj;
+	FileUploadWrapper *m_fileUploadWrapperObj;
+	ExceptionLogger *m_exceptionLoggerObj;
+};
+
+#endif

@@ -1,0 +1,321 @@
+#include "FileUploadWrapper.h"
+
+FileUploadWrapper::FileUploadWrapper( std::string appName, std::string gatewayId ):
+	m_cloudAppName( appName ),
+	m_gatewayId( gatewayId )
+{
+	m_exceptionLoggerObj = m_exceptionLoggerObj->GetInstance();
+	m_deviceId = "";
+}
+
+FileUploadWrapper::~FileUploadWrapper()
+{
+	
+}
+
+/**
+ * @brief GetAndUploadFiles() :	This Method will get the files name from predefined path and call the 
+ * 								FormatAndUploadFile() method.
+ * 
+ * @param std::string srcDirectory  : Directory path.
+ */	
+bool FileUploadWrapper::GetAndUploadFiles( std::string srcDirectory, std::string datajson)
+{
+	std::stringstream logg;
+	std::list<std::string> lstFileNames;
+	bool status = false;
+	
+	try
+	{
+		struct dirent **hFile;
+		int n,i=0;
+		
+		#ifdef TRB_GATEWAY
+			process_cached_files(CACHED_TELEMERTY_PATH, srcDirectory, "Telemetry");
+			process_cached_files(CACHED_ALERT_PATH, srcDirectory, "Alert");
+
+		#else
+
+		n = scandir( srcDirectory.c_str(), &hFile, 0, alphasort );
+
+		// Find the inode number of a upper bound and a lower bound
+		// Iterate through upper bound and lower bound
+
+		if (n < 0)
+		{
+		   perror("scandir");
+		}
+		else 
+		{
+			while ( (i < n) )
+			{
+				if (!strcmp( hFile[i]->d_name, "." ) || !strcmp( hFile[i]->d_name, ".." )) 
+				{
+					i++;
+					continue;
+				}
+				
+				if ((strstr(hFile[i]->d_name,".json")))
+				{
+					char name[200];
+					sprintf(name,"%s",(hFile[i]->d_name));
+					std::string filePath = srcDirectory + name; 
+					FormatAndUploadJson( filePath, name );
+					status = true;
+					free( hFile[i] );
+				}
+				i++;
+				usleep(100);
+			}
+		}
+		free(hFile);
+		#endif
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "FileUploadWrapper::ValidateFileContent()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+		lstFileNames.empty();
+	}
+	return status;
+}
+
+/**
+ * @brief UploadFiles() :	This thread will get the files from predefined path and upload the  
+ * 							Cached telemetry and alert files.
+ * 
+ */	
+void FileUploadWrapper::UploadFiles(std::string dataJson)
+{
+	std::stringstream logg;
+	try
+	{
+		std::thread uploadThread = std::thread([this, dataJson]()
+		{
+			//get list of files and upload Cached Telemetry
+			GetAndUploadFiles( DB_TELEMERTY_PATH, dataJson);
+			GetAndUploadFiles( DB_ALERT_PATH, dataJson);
+		});
+		
+		uploadThread.detach();
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "FileUploadWrapper::UploadFiles()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+}
+
+
+/**
+ * @brief UploadFiles() :	This thread will get the files from predefined path and upload the  
+ * 							Cached telemetry and alert files.
+ * 
+ */	
+void FileUploadWrapper::UploadFiles()
+{
+	std::stringstream logg;
+	try
+	{
+		std::thread uploadThread = std::thread([this] ()
+		{
+			//get list of files and upload Cached Telemetry
+			GetAndUploadFiles( CACHED_TELEMERTY_PATH );
+			GetAndUploadFiles( CACHED_ALERT_PATH );
+		});
+		
+		uploadThread.detach();
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "FileUploadWrapper::UploadFiles()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+}
+
+void FileUploadWrapper::process_cached_files(std::string path, std::string srcDirectory, std::string filename)
+{
+	char filename_str[50];
+	char *p, *q;
+
+	std::string LSCMD = "ls " + path + " >> " + path + "cached_" + filename + "_names.txt";
+	system( LSCMD.c_str() );
+
+	//LSCMD = "ls /opt/IoT_Gateway/CachedData/Alert >> alert_file_names.txt";
+	//system( LSCMD.c_str() );
+
+	std::string readFile = path + "cached_" + filename + "_names.txt";
+	
+	std::cout << "FileUploadWrapper::process_cached_files - readFile :" << readFile << std::endl;
+	
+	std::string fileContent = ReadAndSetConfigurationInStr( readFile );
+
+	std::string rmCMD = "rm " + readFile;
+	system( rmCMD.c_str() );
+
+	int lnt = fileContent.length();
+	char char_array[500] = {0};
+
+	strcpy(char_array, fileContent.c_str());
+	p = q = char_array;
+	while (p = strstr(p,".json" ))
+	{
+		p = p + strlen(".json\n");
+		memset(filename_str,0,sizeof(filename_str));
+		memcpy(filename_str,q,p-q-1);
+		filename_str[p-q-1] = '\0';
+		q = p;
+		
+		std::string filepath = srcDirectory + filename_str;
+		
+		FormatAndUploadJson( filepath, filename_str );
+	}
+}
+
+
+/**
+ * @brief GetAndUploadFiles() :	This Method will get the files name from predefined path and call the 
+ * 								FormatAndUploadFile() method.
+ * 
+ * @param std::string srcDirectory  : Directory path.
+ */	
+bool FileUploadWrapper::GetAndUploadFiles( std::string srcDirectory )
+{
+	std::stringstream logg;
+	std::list<std::string> lstFileNames;
+	bool status = false;
+	
+	try
+	{
+		struct dirent **hFile;
+		int n,i=0;
+		
+		#ifdef TRB_GATEWAY
+			process_cached_files(CACHED_TELEMERTY_PATH, srcDirectory, "Telemetry");
+			process_cached_files(CACHED_ALERT_PATH, srcDirectory, "Alert");
+
+		#else
+
+		n = scandir( srcDirectory.c_str(), &hFile, 0, alphasort );
+	   
+		if (n < 0)
+		{
+		   perror("scandir");
+		}
+		else 
+		{
+			while ( (i < n) )
+			{
+				if (!strcmp( hFile[i]->d_name, "." ) || !strcmp( hFile[i]->d_name, ".." )) 
+				{
+					i++;
+					continue;
+				}
+				
+				if ((strstr(hFile[i]->d_name,".json")))
+				{
+					char name[200];
+					sprintf(name,"%s",(hFile[i]->d_name));
+					std::string filePath = srcDirectory + name; 
+					FormatAndUploadJson( filePath, name );
+					status = true;
+					free( hFile[i] );
+				}
+				i++;
+				usleep(100);
+			}
+		}
+		free(hFile);
+		#endif
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "FileUploadWrapper::ValidateFileContent()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+		lstFileNames.empty();
+	}
+	return status;
+}
+
+/**
+ * @brief GetAndUploadFiles() :	This Method will read the files and add the required json content,
+ * 								publish the json to CommunicationApp and delete the file.
+ * 
+ * @param std::string fileNameWithPath  : full path with filename.
+ * @param std::string fileName          : only filename.
+ */	
+void FileUploadWrapper::FormatAndUploadJson( std::string fileNameWithPath, std::string fileName )
+{
+	std::stringstream logg;
+	try
+	{
+		nlohmann::json jsonObj1;
+		jsonObj1 = ReadAndSetConfiguration( fileNameWithPath );
+		if( !jsonObj1.is_null() )
+		{
+            std::string destFilePath = "telemetry/" ;
+			destFilePath += jsonObj1[DEVICE_ID];
+			destFilePath += GetCurrentDate() + fileName ;
+			jsonObj1[COMMAND_INFO][COMMAND_TYPE] = CACHED_DATA;
+			jsonObj1[COMMAND_INFO][FILE_NAME] = destFilePath;
+			
+			#ifdef TRB_GATEWAY
+				
+			std::string remove_logfile = "rm " + fileNameWithPath;
+			if( system( remove_logfile.c_str()) == 0)
+			{
+				logg.str("");
+				logg << "FileUploadWrapper::FormatAndUploadJson - " << fileNameWithPath << "' file deleted successfully.";
+				m_exceptionLoggerObj->LogInfo( logg.str() );
+			}
+			else
+			{
+				logg.str("");
+				logg << "FileUploadWrapper::FormatAndUploadJson - " << fileNameWithPath << "' file deleted failed.";
+				m_exceptionLoggerObj->LogError( logg.str() );
+			}
+			
+			#else
+			if( unlink( fileNameWithPath.c_str() ) != 0 )
+			{
+				logg.str("");
+				logg << "FileUploadWrapper::FormatAndUploadJson  GatewayID : " << m_gatewayId << ",  Message : File can not be deleted. File Name : " << fileName ;
+				m_exceptionLoggerObj->LogError( logg.str() );
+			}
+			
+			#endif
+			
+			m_cachedDataCB( jsonObj1 );
+		}
+		else
+		{
+			if( unlink( fileNameWithPath.c_str() ) == 0 )
+			{
+				logg.str("");
+				logg << "FileUploadWrapper::FormatAndUploadJson  GatewayID : " << m_gatewayId << ",  Message : Delete empty file. File Name : " << fileName ;
+				m_exceptionLoggerObj->LogInfo( logg.str() );
+			}
+		}
+	}
+	catch(nlohmann::json::exception &e)
+	{
+		logg.str("");
+		logg << "FileUploadWrapper::FormatAndUploadJson  GatewayID : " << m_gatewayId << ",  Message : Error code :  " << e.id << " Error Messag : " << e.what();
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	catch( ... )
+	{
+		logg.str("");s
+		logg << "FileUploadWrapper::FormatAndUploadJson  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+}
+
+void FileUploadWrapper::RegisterCachedDataCB( std::function<void(nlohmann::json)> cb )
+{
+	m_cachedDataCB = cb;
+}

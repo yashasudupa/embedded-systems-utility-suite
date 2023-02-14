@@ -1,0 +1,177 @@
+#include "DataCacherManager.h"
+
+/**
+ * @brief Create an DataCacherManager	:	It will call the InitDataCacherManager method and init required pointes.
+ * 	
+ * @param gatewayId 	:	register gateway id name..
+ * @param cloudAppName 	:	register cloud app name..
+ *										
+ */
+DataCacherManager::DataCacherManager( std::string gatewayId, std::string cloudAppName ):
+	m_gatewayId( gatewayId ),
+	m_cloudAppName( cloudAppName )
+{
+	m_exceptionLoggerObj = m_exceptionLoggerObj->GetInstance();
+	InitDataCacherManager();
+}
+
+/**
+ * @brief destroy an LocalBrokerCommunicationManager	:	It will deinitilize DataCacherManager.
+ * 
+ */
+DataCacherManager::~DataCacherManager()
+{
+	if( m_localBrokerCommObj )
+	{
+		delete m_localBrokerCommObj;
+	}
+	
+	if( m_dataStorageWrapperObj )
+	{
+		delete m_dataStorageWrapperObj;
+	}
+	
+	if( m_fileUploadWrapperObj )
+	{
+		delete m_fileUploadWrapperObj;
+	}
+	
+}
+
+/**
+ * @brief InitGatewayAgentManager	:	This method will initilize FileUploadWrapper, DataStorageWrapper, LocalBrokerCommunicationManager. 
+ * 
+ */ 
+void DataCacherManager::InitDataCacherManager()
+{
+	std::stringstream logg;
+	try
+	{
+		std::string subCachedData = PUBLISH_PREFIX + m_gatewayId + CACHER_APP_CACHED_DATA_PREFIX;
+		std::string subCachedDataRequest = PUBLISH_PREFIX + m_gatewayId + CACHER_APP_CACHED_DATA_REQUEST_PREFIX;
+		m_localBrokerCommObj = new LocalBrokerCommunicationManager();
+		
+		if( m_localBrokerCommObj )
+		{
+			logg.str("");
+			logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : LocalBrokerCommunicationManager object created successfully.";
+			m_exceptionLoggerObj->LogInfo( logg.str() );
+			m_localBrokerCommObj->RegisterCB( std::bind( &DataCacherManager::ReceiveSubscribedData, this, std::placeholders::_1) );
+			m_localBrokerCommObj->SubscribeTopic( subCachedData );
+			m_localBrokerCommObj->SubscribeTopic( subCachedDataRequest );
+		}
+		else
+		{
+			logg.str("");
+			logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : LocalBrokerCommunicationManager object creation Failed.";
+			m_exceptionLoggerObj->LogError( logg.str() );
+		}
+		
+		m_dataStorageWrapperObj = new DataStorageWrapper( m_gatewayId, m_cloudAppName  );
+		
+		if( m_dataStorageWrapperObj == NULL )
+		{
+			logg.str("");
+			logg << "GatewayAgentManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : DataStorageWrapper object creation Failed.";
+			m_exceptionLoggerObj->LogError( logg.str() );
+		}
+		
+		m_fileUploadWrapperObj = new FileUploadWrapper( m_cloudAppName, m_gatewayId );
+		
+		if( m_fileUploadWrapperObj )
+		{
+			logg.str("");
+			logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : FileUploadWrapper object created successfully.";
+			m_exceptionLoggerObj->LogInfo( logg.str() );
+			m_fileUploadWrapperObj->RegisterCachedDataCB( std::bind( &DataCacherManager::ReceiveCachedData, this, std::placeholders::_1) );
+		}
+		else
+		{
+			logg.str("");
+			logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : FileUploadWrapper object creation Failed.";
+			m_exceptionLoggerObj->LogError( logg.str() );
+		}
+	}
+	catch(nlohmann::json::exception &e)
+	{
+		logg.str("");
+		logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : Error code :  " << e.id << " Error Messag : " << e.what();
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "DataCacherManager::InitDataCacherManager()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+}
+
+/**
+ * @brief ReceiveSubscribedData		:	This method will bind with RegisterCB call back which will receive the cached data from 
+ * 										communicator app. This methode will pass the received data to the Datastorage class
+ * 
+ * @param std::string data	 		:	Content of the request which is send by communicator app
+ */
+void DataCacherManager::ReceiveSubscribedData( std::string data )
+{
+	std::stringstream logg;
+	try
+	{
+        logg.str("");
+		logg << "DataCacherManager::ReceiveSubscribedData()  GatewayID : " << m_gatewayId << "  Cached Data is  : "  << data;
+		m_exceptionLoggerObj->LogDebug( logg.str() );
+		nlohmann::json dataJson = nlohmann::json::parse( data );
+        
+        logg.str("");
+		logg << "DataCacherManager::ReceiveSubscribedData()  GatewayID : " << m_gatewayId << "  Cached DataJson is  : "  << dataJson;
+		m_exceptionLoggerObj->LogDebug( logg.str() );
+        
+		std::string commandSchema = dataJson[COMMAND_INFO][COMMAND_TYPE];
+//        std::string commandSchema = dataJson[COMMAND_INFO][COMMAND_SCHEMA];
+        
+        logg.str("");
+		logg << "DataCacherManager::ReceiveSubscribedData()  GatewayID : " << m_gatewayId << "  commandSchema is  : "  << commandSchema;
+		m_exceptionLoggerObj->LogDebug( logg.str() );
+		if( commandSchema == CONNECTION_STATUS )
+		{
+			if( dataJson[CONNECTION_STATUS] )
+			{
+				m_fileUploadWrapperObj->UploadFiles();
+			}
+		}
+		else
+		{
+            logg.str("");
+            logg << "DataCacherManager::ReceiveSubscribedData()  dataJson Temp: " << dataJson << "  commandSchema is a : "  << commandSchema;
+            m_exceptionLoggerObj->LogDebug( logg.str() ); // H1
+
+            m_dataStorageWrapperObj->ExecuteCommand( dataJson );
+		}
+	}
+	catch(nlohmann::json::exception &e)
+	{
+		logg.str("");
+		logg << "DataCacherManager::ReceiveSubscribedData()  GatewayID : " << m_gatewayId << ",  Message : Error code :  " << e.id << " Error Messag : " << e.what();
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+	catch( ... )
+	{
+		logg.str("");
+		logg << "DataCacherManager::ReceiveSubscribedData()  GatewayID : " << m_gatewayId << ",  Message : Unknown exception occured.";
+		m_exceptionLoggerObj->LogException( logg.str() );
+	}
+}
+
+/**
+ * @brief ReceiveCachedData			:	This method will bind with RegisterCachedDataCB call back which will receive the cached data from 
+ * 										FileUpload class. This methode will publish the received data to the communicator app
+ * 
+ * @param nlohmann::json jsonObj 	:	Content of the request which is send by FileUpload class.
+ */
+void DataCacherManager::ReceiveCachedData( nlohmann::json jsonObj )
+{
+	std::string cachedDataUploadTopic = PUBLISH_PREFIX 	+ m_gatewayId + CACHER_APP_CACHED_DATA_UPLOAD_PREFIX;
+	std::string jsonstr = jsonObj.dump();
+	m_localBrokerCommObj->PublishData( jsonstr, cachedDataUploadTopic );
+}
+
