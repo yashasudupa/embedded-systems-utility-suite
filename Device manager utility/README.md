@@ -1,5 +1,4 @@
-# Device Manager Utility (C++ System Design Demo)
-
+# Device Manager Utility
 A modular C++ application demonstrating:
 - Pure Virtual Interfaces
 - Singleton Design Pattern
