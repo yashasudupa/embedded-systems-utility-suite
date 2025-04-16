@@ -1,238 +1,167 @@
 #include "ReadProperties.h"
 
+ReadProperties::ReadProperties(std::string deviceId, std::string slaveId, std::string processName, nlohmann::json connectionJson)
+    : m_deviceId(deviceId),
+      m_ctx(nullptr),
+      m_slave_Id(slaveId),
+      m_blockNumber(0),
+      m_totalNumberOfProperties(0),
+      m_noOfRegInOneBlock(45),
+      m_pollingFreq(5000),
+      m_turboTimeout(5000),
+      m_deviceMode(""),
+      m_changeValueState(false),
+      m_ThreadRunning(true),
+      m_connectionStatus(COMMFAIL),
+      m_connectionJson(connectionJson),
+      m_connectionNotificationFlag(false),
+      m_processName(processName),
+      m_numberOfRequests(1),
+      m_firstTimeAppStartFlag(true),
+      m_lastAlertVal(0)
+{
+    // Initialize group structures with default values
+    m_grpStructObj1 = new GROUP_STRUCT{5000, 5000, 10000, 60000};
+    m_grpStructObj2 = new GROUP_STRUCT{5000, 5000, 10000, 60000};
+    m_grpStructObj3 = new GROUP_STRUCT{5000, 5000, 10000, 60000};
 
-ReadProperties::ReadProperties( std::string deviceId, std::string slaveId, std::string processName, nlohmann::json connectionJson ):
-		m_deviceId( deviceId ),
-		m_ctx( NULL ),
-        m_slave_Id(slaveId),
-		m_blockNumber( 0 ),
-		m_totalNumberOfProperties( 0 ),
-		m_noOfRegInOneBlock( 45 ),
-		m_pollingFreq( 5000 ),
-		m_turboTimeout( 5000 ),
-		m_deviceMode( "" ),
-		m_changeValueState( false ),
-		m_ThreadRunning(true),
-        m_connectionStatus( COMMFAIL ),
-        m_connectionJson( connectionJson ),
-        m_connectionNotificationFlag( false ),
-        m_processName( processName ),
-        m_numberOfRequests(1),
-        m_firstTimeAppStartFlag(true),
-        m_lastAlertVal(0)
-		
-		{
-			
-    m_grpStructObj1 = new GROUP_STRUCT;
-    m_grpStructObj2 = new GROUP_STRUCT;
-    m_grpStructObj3 = new GROUP_STRUCT;
-    
-	
-    m_grpStructObj1->measuredFrequency = 5000;
-    m_grpStructObj1->turboModeFrequency = 5000;
-    m_grpStructObj1->uploadFrequency =10000;
-    m_grpStructObj1->turboTimeout =60000;
-    
-    m_grpStructObj2->measuredFrequency = 5000;
-    m_grpStructObj2->turboModeFrequency = 5000;
-    m_grpStructObj2->uploadFrequency =10000;
-    m_grpStructObj2->turboTimeout =60000;
-    
-    m_grpStructObj3->measuredFrequency = 5000;
-    m_grpStructObj3->turboModeFrequency = 5000;
-    m_grpStructObj3->uploadFrequency =10000;
-    m_grpStructObj3->turboTimeout =60000;
-    
-    
-    
+    // Connect to external device
     ConnectToDevice();
-	long pid = GetProcessIdByName( processName );
-	m_configFilePath = "./config/" + m_processName + "/";
-	m_commandJson[APP_NAME] = processName;
-	m_commandJson[APP_ID] = pid;
-	m_commandJson[COMMAND_TYPE] = RESPONSE;
-	
-	m_alertJsonArray[COMMAND_INFO] = m_commandJson;
-	m_alertJsonArray[COMMAND_INFO][COMMAND_SCHEMA] = "alert";
-	m_alertJsonArray[TYPE] = MULTI_ALERT;
-	m_alertJsonArray[DEVICE_ID] = m_deviceId;
-	
-	m_telemetryModeJson[COMMAND_INFO] = m_commandJson;
-	m_ruleEnginePropertyJson[COMMAND_INFO] = m_commandJson;
-	m_ruleEnginePropertyJson[TYPE] = "rule_engine";
-	m_ruleEnginePropertyJson[COMMAND] = "rule_device_data";
-	m_ruleEnginePropertyJson[DEVICE_ID] = deviceId;
-	
-	m_alertPercistancyFileName = "./config/" + processName + "/" + deviceId + "_alert_persistency.json";
-	m_lastAlertPersistancyJson = ReadAndSetConfiguration( m_alertPercistancyFileName );
-    
+
+    // Retrieve current process ID
+    long pid = GetProcessIdByName(processName);
+
+    // Set file paths and initial JSON structures
+    m_configFilePath = "./config/" + m_processName + "/";
+    m_commandJson[APP_NAME] = processName;
+    m_commandJson[APP_ID] = pid;
+    m_commandJson[COMMAND_TYPE] = RESPONSE;
+
+    m_alertJsonArray[COMMAND_INFO] = m_commandJson;
+    m_alertJsonArray[COMMAND_INFO][COMMAND_SCHEMA] = "alert";
+    m_alertJsonArray[TYPE] = MULTI_ALERT;
+    m_alertJsonArray[DEVICE_ID] = m_deviceId;
+
+    m_telemetryModeJson[COMMAND_INFO] = m_commandJson;
+    m_ruleEnginePropertyJson[COMMAND_INFO] = m_commandJson;
+    m_ruleEnginePropertyJson[TYPE] = "rule_engine";
+    m_ruleEnginePropertyJson[COMMAND] = "rule_device_data";
+    m_ruleEnginePropertyJson[DEVICE_ID] = deviceId;
+
+    // Read persisted alert configuration
+    m_alertPercistancyFileName = "./config/" + processName + "/" + deviceId + "_alert_persistency.json";
+    m_lastAlertPersistancyJson = ReadAndSetConfiguration(m_alertPercistancyFileName);
+
+    // Read persisted rule engine configuration
     m_ruleEnginePropertiesFileName = "./config/" + processName + "/" + deviceId + "_rule_engine_parsistancy.json";
-    nlohmann::json ruleEnginePersistancyJson;
-    ruleEnginePersistancyJson = ReadAndSetConfiguration( m_ruleEnginePropertiesFileName );
-    
-    for ( auto& x : ruleEnginePersistancyJson["properties"] )
-	{
-		std::cout << "x : " << x << "\n";
-        std::string propertyName = x;
-        m_ruleEnginePropertyMap.insert( propertyName );
-	}
+    nlohmann::json ruleEnginePersistancyJson = ReadAndSetConfiguration(m_ruleEnginePropertiesFileName);
+
+    // Populate rule engine properties
+    for (const auto& x : ruleEnginePersistancyJson["properties"])
+    {
+        std::cout << "x : " << x << "\n";
+        m_ruleEnginePropertyMap.insert(x);
+    }
 }
 
 ReadProperties::~ReadProperties()
 {
+    // Proper cleanup: close connection and stop threads
     CloseConnection();
-	m_ThreadRunning = false;
-    
-    for (auto it = m_commandGroupStructMap.begin(); it !=m_commandGroupStructMap.end();it++)
+    m_ThreadRunning = false;
+
+    // Clean up dynamically allocated ManageGroupData objects
+    for (auto& [groupName, manageGrpObj] : m_commandGroupStructMap)
     {
-        ManageGroupData *manageGrpObj = it->second;
-        if( manageGrpObj )
-        {
-            delete manageGrpObj;
-        }
+        delete manageGrpObj;
     }
-    
     m_commandGroupStructMap.clear();
-    
-    if(m_grpStructObj1)
-    {
-        delete m_grpStructObj1;
-    }
-    
-    if( m_grpStructObj2 )
-    {
-        delete m_grpStructObj2;
-    }
-    
-    if( m_grpStructObj3 )
-    {
-        delete m_grpStructObj3;
-    }
-    
-	m_threadObj.join();
+
+    // Clean up group structures
+    delete m_grpStructObj1;
+    delete m_grpStructObj2;
+    delete m_grpStructObj3;
+
+    // Wait for the thread to finish execution
+    m_threadObj.join();
 }
 
 void ReadProperties::CreateCommandStruct()
 {
-	m_commandStructList.clear();
-	for ( auto it : m_propertiesMap )
-	{ 
-		std::string propertyName = it.first;
-        std::string groupName = it.second->grpName;
-        bool isAlert = it.second->isAlarm;
-		long startAddress = it.second->startAddress;
-		long secondaryDatatype = it.second->secondaryDatatype;
-		char datatype = it.second->datatype;
-		short functionCode = it.second->functionCode;
-		short wordQuantity = 1;
-		CMD_STRUCT * CommandAttr;
-		
-		if ( (secondaryDatatype == DATA_BYTE  || secondaryDatatype == DATA_UNSIGNED_16  || secondaryDatatype == DATA_SIGNED_16 || secondaryDatatype == DATA_DECIMAL_FLOAT ) && ( datatype == ANALOG || datatype == DIGITAL ) )
-		{
-			wordQuantity = 1;
-		}
-		else if (secondaryDatatype == DATA_UNSIGNED_16 && datatype == STRING )	// For reading string data(more than one register)
-		{
-			wordQuantity = it.second->lastAddress;
-		}
-		else
-		{
-			wordQuantity = 2;//itsCommandAttrList.size();
-		}
-		
-		if(!( startAddress < 0 ) && !( startAddress >= MAXADDR ))
-		{
-			// find commandattr with given values. If not found create a new one and add in list
-			bool found = false;
-			/*
-			for (auto i = m_commandStructList.begin(); i != m_commandStructList.end(); i++)		
-			{
-				CommandAttr = *i;
-				if (CommandAttr->functionCode == functionCode)
-				{
-					long DiffCount;
-					if ( startAddress > CommandAttr->strtAddr )
-					{
-						DiffCount = startAddress - CommandAttr->strtAddr;
-					
-						if( startAddress >= CommandAttr->lastAddr )
-						{
-							CommandAttr->prevWordQuantity = wordQuantity;
-						}
-						
-						DiffCount += CommandAttr->prevWordQuantity;
+    // Clear existing command structures before rebuilding
+    m_commandStructList.clear();
 
-					}
-					else
-					{
-						DiffCount = CommandAttr->lastAddr - startAddress;
-						DiffCount += CommandAttr->prevWordQuantity;
-					}
-					
-					if (DiffCount <= m_noOfRegInOneBlock)
-					{
-						// update start and end address range
-						if (startAddress < CommandAttr->strtAddr)
-						{
-							CommandAttr->strtAddr = startAddress;					
-						}
-					
-						if (startAddress > CommandAttr->lastAddr)
-						{
-							CommandAttr->lastAddr = startAddress;
-							CommandAttr->prevWordQuantity = wordQuantity;
-						}
-						it.second->blockNumber = CommandAttr->blockNo;
-						CommandAttr->wordQuantity = (short)( ( CommandAttr->lastAddr ) - ( CommandAttr->strtAddr ) + CommandAttr->prevWordQuantity);
-						
-						found = true;
-						break;
-					}
-				}
-			}
-			*/
-            if( !isAlert )
+    // Iterate through each property in the map
+    for (const auto& [propertyName, property] : m_propertiesMap)
+    {
+        std::string groupName = property->grpName;
+        bool isAlert = property->isAlarm;
+        long startAddress = property->startAddress;
+        long secondaryDatatype = property->secondaryDatatype;
+        char datatype = property->datatype;
+        short functionCode = property->functionCode;
+        short wordQuantity = 1;
+        CMD_STRUCT* CommandAttr;
+
+        // Determine number of registers to read based on data types
+        if ((secondaryDatatype == DATA_BYTE || secondaryDatatype == DATA_UNSIGNED_16 || 
+             secondaryDatatype == DATA_SIGNED_16 || secondaryDatatype == DATA_DECIMAL_FLOAT) &&
+             (datatype == ANALOG || datatype == DIGITAL))
+        {
+            wordQuantity = 1;
+        }
+        else if (secondaryDatatype == DATA_UNSIGNED_16 && datatype == STRING)
+        {
+            wordQuantity = property->lastAddress;  // For string data across multiple registers
+        }
+        else
+        {
+            wordQuantity = 2;  // Default to 2 registers for other types
+        }
+
+        // Ensure the address is valid
+        if (startAddress >= 0 && startAddress < MAXADDR)
+        {
+            bool found = false;
+
+            // If it's a non-alert property, initialize group manager if not already present
+            if (!isAlert)
             {
-                auto it1 = m_commandGroupStructMap.find(groupName);
-                if( it1 == m_commandGroupStructMap.end() )
+                if (m_commandGroupStructMap.find(groupName) == m_commandGroupStructMap.end())
                 {
-                    ManageGroupData *manageGrpObj = new ManageGroupData( groupName, m_deviceId, m_processName );
-                    manageGrpObj->RegisterPropertiesCB(std::bind( &ReadProperties::PropertiesReceiver, this, std::placeholders::_1));
+                    ManageGroupData* manageGrpObj = new ManageGroupData(groupName, m_deviceId, m_processName);
+                    manageGrpObj->RegisterPropertiesCB(std::bind(&ReadProperties::PropertiesReceiver, this, std::placeholders::_1));
                     manageGrpObj->StartDeviceStateGetterThread();
-                    if( groupName == "g1" )
-                    {
-                        manageGrpObj->SetGroupDetails( m_grpStructObj1 );
-                    }
-                    
-                    if( groupName == "g2" )
-                    {
-                        manageGrpObj->SetGroupDetails( m_grpStructObj2 );
-                    }
-                    
-                    if( groupName == "g3" )
-                    {
-                        manageGrpObj->SetGroupDetails( m_grpStructObj3 );
-                    }
+
+                    // Assign group-specific structure
+                    if (groupName == "g1") manageGrpObj->SetGroupDetails(m_grpStructObj1);
+                    if (groupName == "g2") manageGrpObj->SetGroupDetails(m_grpStructObj2);
+                    if (groupName == "g3") manageGrpObj->SetGroupDetails(m_grpStructObj3);
 
                     m_commandGroupStructMap[groupName] = manageGrpObj;
                 }
             }
 
-			if (!found)			// add new command attr structure
-			{
-				CommandAttr = new CMD_STRUCT;
-				CommandAttr->wordQuantity = wordQuantity;
-				CommandAttr->prevWordQuantity = wordQuantity;
-				CommandAttr->functionCode = functionCode;
-				CommandAttr->dataType = datatype;
-				CommandAttr->blockNo = ++m_blockNumber;
-				CommandAttr->strtAddr = startAddress;
-				CommandAttr->lastAddr = startAddress;
-				it.second->blockNumber = CommandAttr->blockNo;
-				m_commandStructList.insert(m_commandStructList.end(), CommandAttr);
+            // If no existing command block matches, create a new one
+            if (!found)
+            {
+                CommandAttr = new CMD_STRUCT;
+                CommandAttr->wordQuantity = wordQuantity;
+                CommandAttr->prevWordQuantity = wordQuantity;
+                CommandAttr->functionCode = functionCode;
+                CommandAttr->dataType = datatype;
+                CommandAttr->blockNo = ++m_blockNumber;
+                CommandAttr->strtAddr = startAddress;
+                CommandAttr->lastAddr = startAddress;
+
+                // Associate property with this command block
+                property->blockNumber = CommandAttr->blockNo;
+
+                // Add command structure to the list
+                m_commandStructList.emplace_back(CommandAttr);
             }
-		}
-	}
+        }
+    }
 }
 
 void ReadProperties::CreatePropertiesStruct()
