@@ -164,26 +164,33 @@ void ReadProperties::CreateCommandStruct()
     }
 }
 
+// Function to parse the device JSON and populate internal property structures
 void ReadProperties::CreatePropertiesStruct()
 {
 	try
 	{
         std::cout << " ReadProperties::CreatePropertiesStruct() : " << m_deviceProperties <<"\n\n"; 
+        
+        // Clear the existing map to avoid duplicates or stale entries
 		m_propertiesMap.clear(); 
+		
+        // Check and add measured properties from JSON
 		if( !m_deviceProperties["measured_properties"].is_null() )
 		{
 			nlohmann::json propertiesJson;
 			propertiesJson["properties"] = m_deviceProperties["measured_properties"];
-			AddPropertiesAndAlertInMap( propertiesJson, false );
+			AddPropertiesAndAlertInMap(propertiesJson, false); // alertFlag = false
 		}
 		
+        // Check and add alerts from JSON
 		if( !m_deviceProperties["alerts"].is_null() )
 		{
 			nlohmann::json alertsJson;
 			alertsJson["properties"] = m_deviceProperties["alerts"];
-			AddPropertiesAndAlertInMap( alertsJson, true );
+			AddPropertiesAndAlertInMap(alertsJson, true); // alertFlag = true
 		}
 		
+        // Check and save derived properties JSON
 		if( !m_deviceProperties[DERIVED_PROPERTIES].is_null() )
 		{
 			m_derivedPropertiesJson[DERIVED_PROPERTIES] = m_deviceProperties[DERIVED_PROPERTIES];
@@ -195,25 +202,32 @@ void ReadProperties::CreatePropertiesStruct()
 	}
 }
 
-void ReadProperties::AddPropertiesAndAlertInMap( nlohmann::json alertPropertiesJson, bool alertFlag  )
+// Function to create property structures and store them in a map for measured or alert data
+void ReadProperties::AddPropertiesAndAlertInMap(nlohmann::json alertPropertiesJson, bool alertFlag)
 {
 	try
 	{
+        // Iterate through all JSON key-value pairs
 		for ( auto& x : alertPropertiesJson["properties"].items() )
 		{
+			// Allocate memory for property structure and its value holder
 			PROPERTIES_STRUCT *property = new PROPERTIES_STRUCT;
 			VALUE_TYPE *vt = new VALUE_TYPE;
 			property->vt = vt;
-			nlohmann::json jsonObj;
-			jsonObj = x.value();
+			
+			nlohmann::json jsonObj = x.value();
 			nlohmann::json mapKeyJsonObj;
 			mapKeyJsonObj["key"] = x.key();
+			
 			std::string mapKey = mapKeyJsonObj["key"];
 			std::string slaveId = jsonObj["slave_id"];
             
+            // Only process properties for matching slave ID
 			if( slaveId == m_slave_Id )
             {
-                property->isAlarm = alertFlag;
+                property->isAlarm = alertFlag; // Set alert flag
+
+                // Parse datatype and initialize default value
                 if( !jsonObj[DATA_TYPE].is_null() )
                 {
                     std::cout << "jsonObj[DATA_TYPE] : " << jsonObj[DATA_TYPE] << "\n";
@@ -224,60 +238,61 @@ void ReadProperties::AddPropertiesAndAlertInMap( nlohmann::json alertPropertiesJ
                         property->vt->digitalValue = false;
                     }
                 }
-                
+
+                // Parse optional fields safely
                 if( !jsonObj[SECONDARY_DATA_TYPE].is_null() )
                 {
                     std::cout << "jsonObj[SECONDARY_DATA_TYPE] : " << jsonObj[SECONDARY_DATA_TYPE] << "\n";
                     property->secondaryDatatype = jsonObj[SECONDARY_DATA_TYPE];
                 }
-                
+
                 if( !jsonObj[GROUP_NAME].is_null() )
                 {
                     std::cout << "jsonObj[GROUP_NAME] : " << jsonObj[GROUP_NAME] << "\n";
                     property->grpName = jsonObj[GROUP_NAME];
                 }
-                
-                
+
                 if( !jsonObj[START_ADDRESS].is_null() )
                 {
                     std::cout << "jsonObj[START_ADDRESS] : " << jsonObj[START_ADDRESS] << "\n";
                     property->startAddress = jsonObj[START_ADDRESS];
                 }
-                
+
                 if( !jsonObj[PRECISION].is_null() )
                 {
                     std::cout << "jsonObj[PRECISION] : " << jsonObj[PRECISION] << "\n";
                     property->precision = jsonObj[PRECISION];
                 }
-                
+
                 if( !jsonObj[LAST_ADDRESS].is_null() )
                 {
                     std::cout << "jsonObj[LAST_ADDRESS] : " << jsonObj[LAST_ADDRESS] << "\n";
                     property->lastAddress = jsonObj[LAST_ADDRESS];
                 }
-                
+
                 if( !jsonObj[FUNCTION_CODE].is_null() )
                 {
                     std::cout << "jsonObj[FUNCTION_CODE] : " << jsonObj[FUNCTION_CODE] << "\n";
                     property->functionCode = jsonObj[FUNCTION_CODE];
                 }
-                
+
                 if( !jsonObj[BIT_NUMBER].is_null() )
                 {
                     std::cout << "jsonObj[BIT_NUMBER] : " << jsonObj[BIT_NUMBER] << "\n";
                     property->bitNumber = jsonObj[BIT_NUMBER];
                 }
-                
+
+                // Add the property struct to map if map key is valid
                 if( mapKey != "" )
                 {
                     m_propertiesMap[mapKey] = property;
                 }
-                 
+
+                // Update the count of total properties
                 m_totalNumberOfProperties = m_propertiesMap.size();
                 std::cout << "*** m_totalNumberOfProperties : " << m_totalNumberOfProperties << "\n\n";
             }
-           
-        }
+		}
 	}
 	catch( nlohmann::json::exception &e )
 	{
@@ -285,48 +300,59 @@ void ReadProperties::AddPropertiesAndAlertInMap( nlohmann::json alertPropertiesJ
 	}
 }
 
-
+// Function to compute and insert derived (calculated) telemetry values into telemetry JSON
 void ReadProperties::AddDesiredPropertiesInTelemetry()
 {
     for ( auto& x : m_derivedPropertiesJson[DERIVED_PROPERTIES].items() )
     {
         try
         {
-            std::string propertyName = x.key();
-            nlohmann::json valueJson = x.value();
-            
-            std::string condition = valueJson["condition"];//derived property condition;
-            int precision = 2;//valueJson["p"];
-            boost::format derivedFormat = boost::format( condition );
-            
+            std::string propertyName = x.key();          // Name of the derived property
+            nlohmann::json valueJson = x.value();        // Associated JSON object
+
+            std::string condition = valueJson["condition"]; // Expression string with placeholders
+            int precision = 2; // Future enhancement: can be parsed from JSON
+
+            // Format string with dependent property values
+            boost::format derivedFormat = boost::format(condition);
+
             for ( auto& x1 : valueJson["props"].items() )
             {
                 std::string variableName = x1.value();
-                if( !m_localTelemetryJson.contains( x1.value() ) )
+
+                // Check if the dependent property exists
+                if( !m_localTelemetryJson.contains(variableName) )
                 {
                     std::cout << "ReadProperties::AddDesiredPropertiesInTelemetry : Respected dependent property not registered : " << "\n\n";
                     return;
                 }
+
                 double value = m_localTelemetryJson[variableName];
-                derivedFormat.operator %( value );
+                derivedFormat.operator %(value); // Insert value into format string
             }
-            
+
+            // Use mathematical expression parser to evaluate derived expression
             mu::Parser valueParser;
             std::string str = derivedFormat.str();
-            valueParser.SetExpr( str.c_str() );
-            std::cout << "Expression : " << str.c_str() << "\n\n";
-            
-            double calculatedValue = valueParser.Eval();
+            valueParser.SetExpr(str.c_str());
+
+            std::cout << "Expression : " << str << "\n\n";
+
+            double calculatedValue = valueParser.Eval(); // Evaluate expression
+
+            // Round to desired precision
             char str1[100];
-            sprintf ( str1, "%.*f", precision, calculatedValue );
-            calculatedValue = atof( str1 );
-            
-            auto it = m_ruleEnginePropertyMap.find( propertyName );
+            sprintf(str1, "%.*f", precision, calculatedValue);
+            calculatedValue = atof(str1);
+
+            // Update rule engine property map if present
+            auto it = m_ruleEnginePropertyMap.find(propertyName);
             if( it != m_ruleEnginePropertyMap.end() )
             {
                 m_ruleEnginePropertyJson[PROPERTIES][*it] = calculatedValue;
             }
 
+            // Add to telemetry JSON under derived property section
             m_cmmonJson[m_deviceId]["g1"][DERIVED_PROPERTY_TYPE][propertyName] = calculatedValue;
             std::cout << "Evaluation : "<< calculatedValue << std::endl;
         }
@@ -336,18 +362,19 @@ void ReadProperties::AddDesiredPropertiesInTelemetry()
         }
         catch( ... )
         {
-            std::cout << "ReadProperties::AddDesiredPropertiesInTelemetry() - Unknown exception occured." << std::endl;
+            std::cout << "ReadProperties::AddDesiredPropertiesInTelemetry() - Unknown exception occurred." << std::endl;
         }
     }
 }
 
+// Function to close and free Modbus connection
 void ReadProperties::CloseConnection()
 {
 	if ( m_ctx != NULL )
 	{
-		modbus_flush(m_ctx);
-		modbus_close(m_ctx);
-		modbus_free(m_ctx);
+		modbus_flush(m_ctx);   // Ensure all data has been transmitted
+		modbus_close(m_ctx);   // Close the connection
+		modbus_free(m_ctx);    // Free the context memory
 	}
 }
 
