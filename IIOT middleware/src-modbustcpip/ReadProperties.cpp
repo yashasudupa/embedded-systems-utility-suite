@@ -378,367 +378,278 @@ void ReadProperties::CloseConnection()
 	}
 }
 
+// Establishes a Modbus TCP connection to the device
 bool ReadProperties::ConnectToDevice()
 {
     bool retStatus = false;
-    std::stringstream logg;
-	
+
     try
     {
-        CloseConnection();
+        CloseConnection();  // Ensure any previous connection is closed
+
+        // Extract connection parameters from JSON
         long slaveId = m_connectionJson["slave_id"];
-        
         long portNumber = m_connectionJson[PORT_NUMBER];
         std::string hostAddress = m_connectionJson[HOST_ADDRESS];
-      
-		std::cout << "\n portNumber : " << portNumber << std::endl;
-		std::cout << "\n slaveId : " << slaveId << std::endl;
-		std::cout << "\n hostAddress : " << hostAddress.c_str() << std::endl;
-	  
-        m_ctx = modbus_new_tcp( hostAddress.c_str(), portNumber );
 
-		//int slave;
-       /* Socket or file descriptor */
-       //int s;
-       //int debug;
-       //int error_recovery;
-       //struct timeval response_timeout;
-       //struct timeval byte_timeout;
-       //const modbus_backend_t *backend;
-       //void *backend_data;
-	
-		//std::cout << "\n m_ctx->slave : " << m_ctx->slave << std::endl;
-		//std::cout << "\n m_ctx->s : " << m_ctx.s << std::endl;
-		//std::cout << "\n m_ctx->debug : " << m_ctx->debug << std::endl;
-		//std::cout << "\n m_ctx->error_recovery : " << m_ctx->error_recovery << std::endl;
-		//std::cout << "\n m_ctx->backend_data : " << (int8_t)m_ctx->backend_data << std::endl;
+        // Debug prints for connection parameters
+        std::cout << "\nPort Number: " << portNumber;
+        std::cout << "\nSlave ID: " << slaveId;
+        std::cout << "\nHost Address: " << hostAddress << std::endl;
 
-        if( modbus_connect( m_ctx ) == -1) 
+        // Create new Modbus TCP context
+        m_ctx = modbus_new_tcp(hostAddress.c_str(), portNumber);
+
+        // Attempt to connect
+        if (modbus_connect(m_ctx) == -1)
         {
-            std::cout << "\n Connection failed: : HostAddress :" << hostAddress.c_str() << ", PortNumber : " << portNumber;
-            std::cout << "Error :" << modbus_strerror(errno) << std::endl;
-            fprintf(stderr, "Connection failed: %s\n", modbus_strerror(errno));
+            std::cout << "Connection failed: " << modbus_strerror(errno) << std::endl;
             m_connectionStatus = COMMFAIL;
         }
         else
         {
-            modbus_set_slave( m_ctx, slaveId );
-            modbus_set_debug( m_ctx, 1 );
-            retStatus = true;
-            std::cout << "\n Connection successful : HostAddress :" << hostAddress.c_str() << "PortNumber : " << portNumber << "SlaveId : " << slaveId << std::endl;
+            modbus_set_slave(m_ctx, slaveId);
+            modbus_set_debug(m_ctx, 1);
             m_connectionStatus = CONNECTED;
+            retStatus = true;
+            std::cout << "Connection successful\n";
         }
     }
-    catch( nlohmann::json::exception &e )
+    catch (nlohmann::json::exception &e)
     {
         std::cout << e.id << " : " << e.what() << std::endl;
     }
-    catch( ... )
+    catch (...)
     {
-        std::cout << "ReadProperties::ConnectToDevice() - Unknown exception occured." << std::endl;
+        std::cout << "ReadProperties::ConnectToDevice() - Unknown exception occurred." << std::endl;
     }
-    
-	return retStatus;
+
+    return retStatus;
 }
 
+// Reads all Modbus properties defined in m_commandStructList
 short ReadProperties::GetStates()
 {
-	std::stringstream logg;	
-	
-	
-	CMD_STRUCT* commandStructObj;
-	char Logg[2000];
-	short NoOfVariablesRead = 0;
-	for (auto i = m_commandStructList.begin(); i != m_commandStructList.end(); i++)		// 4 function codes
-	{
-		short wError = -1;
-		commandStructObj = *i;
-		uint16_t arrValues[255] = {0};
-		uint8_t coilValues[255] = {0};
+    CMD_STRUCT* commandStructObj;
+    short NoOfVariablesRead = 0;
 
-		//At a time modbus can not read more than 125 registers. Thus if word count in > 125 then log message and 
-		//Ignore processing of those no of registers.
-		if( commandStructObj->wordQuantity > 125 )
-		{			
-			std::cout << "Block size out of range.. wordQuantity : " << commandStructObj->wordQuantity << std::endl; 
-			continue;
-		}
-		else
-		{
-            int retryCount = 0;
-            
-            while( retryCount < 3 )
+    for (auto i = m_commandStructList.begin(); i != m_commandStructList.end(); i++)
+    {
+        short wError = -1;
+        commandStructObj = *i;
+        uint16_t arrValues[255] = {0};
+        uint8_t coilValues[255] = {0};
+
+        // Skip reading if word count exceeds Modbus limit
+        if (commandStructObj->wordQuantity > 125)
+        {
+            std::cout << "Block size out of range. Word Quantity: " << commandStructObj->wordQuantity << std::endl;
+            continue;
+        }
+
+        // Retry mechanism for reading registers
+        for (int retryCount = 0; retryCount < 3; ++retryCount)
+        {
+            wError = ReadRegisters(commandStructObj->functionCode, commandStructObj->strtAddr,
+                                   commandStructObj->wordQuantity, commandStructObj->dataType, arrValues, coilValues);
+
+            if (wError != -1)
             {
-                retryCount++;
-                //******************************* Send Query & Get Response *****************************************/
-                wError = ReadRegisters( commandStructObj->functionCode, commandStructObj->strtAddr, 
-                        commandStructObj->wordQuantity, commandStructObj->dataType, arrValues, coilValues);
-
-                if( wError != -1 )
-                {
-                    NoOfVariablesRead += ParseValues(commandStructObj->functionCode,commandStructObj->strtAddr,
-                                            commandStructObj->wordQuantity, commandStructObj->blockNo, arrValues, coilValues );
-                    break;
-                }
-                else
-                {
-                    std::cout << "Error in reading properties " << wError << std::endl;
-                }
+                NoOfVariablesRead += ParseValues(commandStructObj->functionCode, commandStructObj->strtAddr,
+                                                 commandStructObj->wordQuantity, commandStructObj->blockNo,
+                                                 arrValues, coilValues);
+                break;
+            }
+            else
+            {
+                std::cout << "Error reading properties, attempt: " << retryCount + 1 << std::endl;
                 usleep(10);
             }
-		}
-	}
-	
-	if(NoOfVariablesRead > 0)
-	{
+        }
+    }
+
+    // Logging
+    if (NoOfVariablesRead > 0)
+    {
         m_connectionNotificationFlag = false;
-		sprintf(Logg,"ModbusMaster::readVariables() - No of Variables : %d read Successfully out of : %d\n\n",
-				NoOfVariablesRead,m_totalNumberOfProperties);
-		std::cout << Logg;
-		
-		std::string Logg_string = Logg;
-		
-		//std::string print_log = "echo " + Logg_string + " > log.txt"; 
-			
-		//system(print_log.c_str());
-	}
-	else
-	{
+        std::cout << "ModbusMaster::readVariables() - Variables read successfully: " 
+                  << NoOfVariablesRead << " out of " << m_totalNumberOfProperties << std::endl;
+    }
+    else
+    {
         m_connectionNotificationFlag = true;
-		m_connectionStatus = COMMFAIL;
-		std::cout << "ERROR : Zero properties read out of : " << m_totalNumberOfProperties << std::endl;
-		//std::string print_log = "echo ERROR : Zero properties read out of :  > log_error.txt"; 
-		
-		//system(print_log.c_str());
-	}
-	return NoOfVariablesRead;
+        m_connectionStatus = COMMFAIL;
+        std::cout << "ERROR: Zero properties read out of " << m_totalNumberOfProperties << std::endl;
+    }
+
+    return NoOfVariablesRead;
 }
 
-short ReadProperties::ReadRegisters( int functionCode, long startAddress, short wordQuant, int dataType, uint16_t wordValues[], uint8_t coilValues[]) 
+// Executes the actual Modbus read operation based on the function code
+short ReadProperties::ReadRegisters(int functionCode, long startAddress, short wordQuant, int dataType,
+                                    uint16_t wordValues[], uint8_t coilValues[])
 {
-    short nError = -1;	
-	std::stringstream logg;
-	
-	int flag;
-	std::cout <<  "functionCode : " << functionCode << "\tstartAddress : " << startAddress;
-	std::cout <<  "\twordQuant : " << wordQuant << "\tdataType : " << dataType;
-	//std::cout <<  "\twordQuant : " << wordQuant << "\tdataType : " << dataType;
-	 
-	switch ( functionCode )
-	{
-		case 1: //READ_COIL_STATUS: //01
-			coilValues[wordQuant];
-			nError = modbus_read_bits(m_ctx, startAddress, wordQuant, coilValues ) ;
-			flag = 1;
-			break;
-				
-		case 2: //READ_INPUT_STATUS: //02
-			coilValues[wordQuant];
-			nError = modbus_read_input_bits(m_ctx, startAddress, wordQuant, coilValues );
-			break;	
-		
-		case 3: //READ_HOLDING_REGISTERS:	//03
-			wordValues[wordQuant];
-			nError = modbus_read_registers(m_ctx, startAddress, wordQuant, wordValues );
-			break;
+    short nError = -1;
 
-		case 4: //READ_INPUT_REGISTERS: //04
-			wordValues[wordQuant];
-			nError = modbus_read_input_registers(m_ctx, startAddress, wordQuant, wordValues );
-			break;
-	}
-	
-	if ( nError == -1 )
-	{
-		std::cout << "ERROR : Read Properties failed.. StartAddress : " << startAddress << " "<< modbus_strerror( nError ) << std::endl;
-	}
-	
-	return nError;
+    std::cout << "Function Code: " << functionCode << "\tStart Address: " << startAddress
+              << "\tWord Quantity: " << wordQuant << "\tData Type: " << dataType << std::endl;
+
+    switch (functionCode)
+    {
+        case 1: // Read Coils
+            nError = modbus_read_bits(m_ctx, startAddress, wordQuant, coilValues);
+            break;
+
+        case 2: // Read Discrete Inputs
+            nError = modbus_read_input_bits(m_ctx, startAddress, wordQuant, coilValues);
+            break;
+
+        case 3: // Read Holding Registers
+            nError = modbus_read_registers(m_ctx, startAddress, wordQuant, wordValues);
+            break;
+
+        case 4: // Read Input Registers
+            nError = modbus_read_input_registers(m_ctx, startAddress, wordQuant, wordValues);
+            break;
+    }
+
+    if (nError == -1)
+    {
+        std::cout << "ERROR: Read failed at address " << startAddress << " - " << modbus_strerror(errno) << std::endl;
+    }
+
+    return nError;
 }
 
-short ReadProperties::ParseValues( int functionCode, long strtAddr, short wordQuant, short blockNumber,
-                                    uint16_t wordValues[], uint8_t coilValues[] )
+// Parses raw register/coil values into meaningful properties
+short ReadProperties::ParseValues(int functionCode, long strtAddr, short wordQuant, short blockNumber,
+                                  uint16_t wordValues[], uint8_t coilValues[])
 {
-	short NoOfVariablesRead = 0;
-    std::stringstream logg;
-    
-    logg.str("");
+    short NoOfVariablesRead = 0;
+
     try
     {
-        for ( auto it : m_propertiesMap )
-        { 
-            short propertyFunctionCode = it.second->functionCode;
-            int bn = it.second->blockNumber;
-            if (( propertyFunctionCode != functionCode ) ||  ( bn != blockNumber ))
-            {
+        for (auto& it : m_propertiesMap)
+        {
+            if (it.second->functionCode != functionCode || it.second->blockNumber != blockNumber)
                 continue;
-            }
-            
+
             std::string propertyName = it.first;
             std::string grpName = it.second->grpName;
             long startAddress = it.second->startAddress;
             long secondaryDatatype = it.second->secondaryDatatype;
             char datatype = it.second->datatype;
             short bitNumber = it.second->bitNumber;
-            VALUE_TYPE *newValueType = new VALUE_TYPE;
-            
-            switch( datatype )
+
+            VALUE_TYPE* newValueType = new VALUE_TYPE;
+
+            switch (datatype)
             {
                 case ANALOG:
-                {
-                    switch ( secondaryDatatype )
+                    switch (secondaryDatatype)
                     {
                         case DATA_BYTE:
-                        {								
-                            newValueType->analogValue = MODBUS_GET_HIGH_BYTE( wordValues[(startAddress)-strtAddr] );
-                        }
-                        break;
-                        
+                            newValueType->analogValue = MODBUS_GET_HIGH_BYTE(wordValues[startAddress - strtAddr]);
+                            break;
+
                         case DATA_SIGNED_16:
-                        {
-                            newValueType->analogValue = wordValues[(startAddress)-strtAddr];
-                        }
-                        break;
-                            
                         case DATA_UNSIGNED_16:
-                        {
-                            double tempData = (unsigned short)wordValues[(startAddress)-strtAddr];
-                            newValueType->analogValue = tempData;
-                        }
-                        break;	
-                            
+                            newValueType->analogValue = static_cast<unsigned short>(wordValues[startAddress - strtAddr]);
+                            break;
+
                         case DATA_LONG:
-                        {								
-                            newValueType->analogValue = MODBUS_GET_INT32_FROM_INT16( wordValues, (startAddress)-strtAddr );
-                        }
-                        break;
+                            newValueType->analogValue = MODBUS_GET_INT32_FROM_INT16(wordValues, startAddress - strtAddr);
+                            break;
 
                         case DATA_LONG_REVERSE:
-                        {		
-                            uint16_t arr[10];
-                            arr[0] = wordValues[(startAddress-strtAddr)+1];
-                            arr[1] = wordValues[(startAddress-strtAddr)];
-                            newValueType->analogValue = MODBUS_GET_INT32_FROM_INT16(arr, (startAddress)-strtAddr );
-                        }
-                        break;
-                            
-                        case DATA_FLOAT_REVERSE :
                         {
-                            newValueType->analogValue = modbus_get_float_dcba(&wordValues[(startAddress-strtAddr)]); 
-                            char str[100];
-                            sprintf (str, "%.*f", it.second->precision, newValueType->analogValue );
-                            newValueType->analogValue = atof( str );
+                            uint16_t arr[] = {
+                                wordValues[startAddress - strtAddr + 1],
+                                wordValues[startAddress - strtAddr]
+                            };
+                            newValueType->analogValue = MODBUS_GET_INT32_FROM_INT16(arr, 0);
+                            break;
                         }
-                        break;
-						
-						case DATA_FLOAT_REVERSE_ABCD :
-                        {
-                            newValueType->analogValue = modbus_get_float_abcd(&wordValues[(startAddress-strtAddr)]); 
-                            char str[100];
-                            sprintf (str, "%.*f", it.second->precision, newValueType->analogValue );
-                            newValueType->analogValue = atof( str );
-                        }
-                        break;
-						
-						case DATA_FLOAT_REVERSE_BACD :
-                        {
-                            newValueType->analogValue = modbus_get_float_badc(&wordValues[(startAddress-strtAddr)]); 
-                            char str[100];
-                            sprintf (str, "%.*f", it.second->precision, newValueType->analogValue );
-                            newValueType->analogValue = atof( str );
-                        }
-                        break;
-						
-						case DATA_FLOAT_REVERSE_CDAB :
-                        {
-                            newValueType->analogValue = modbus_get_float_cdab(&wordValues[(startAddress-strtAddr)]); 
-                            char str[100];
-                            sprintf (str, "%.*f", it.second->precision, newValueType->analogValue );
-                            newValueType->analogValue = atof( str );
-                        }
-                        break;
 
-                        case DATA_FLOAT :
+                        case DATA_FLOAT:
+                        case DATA_FLOAT_REVERSE:
+                        case DATA_FLOAT_REVERSE_ABCD:
+                        case DATA_FLOAT_REVERSE_BACD:
+                        case DATA_FLOAT_REVERSE_CDAB:
                         {
-                            newValueType->analogValue = modbus_get_float(&wordValues[(startAddress-strtAddr)]);
+                            float val = 0.0;
+                            if (secondaryDatatype == DATA_FLOAT)
+                                val = modbus_get_float(&wordValues[startAddress - strtAddr]);
+                            else if (secondaryDatatype == DATA_FLOAT_REVERSE)
+                                val = modbus_get_float_dcba(&wordValues[startAddress - strtAddr]);
+                            else if (secondaryDatatype == DATA_FLOAT_REVERSE_ABCD)
+                                val = modbus_get_float_abcd(&wordValues[startAddress - strtAddr]);
+                            else if (secondaryDatatype == DATA_FLOAT_REVERSE_BACD)
+                                val = modbus_get_float_badc(&wordValues[startAddress - strtAddr]);
+                            else if (secondaryDatatype == DATA_FLOAT_REVERSE_CDAB)
+                                val = modbus_get_float_cdab(&wordValues[startAddress - strtAddr]);
+
                             char str[100];
-                            sprintf (str, "%.*f", it.second->precision, newValueType->analogValue );
-                            newValueType->analogValue = atof( str );
+                            sprintf(str, "%.*f", it.second->precision, val);
+                            newValueType->analogValue = atof(str);
+                            break;
                         }
-                        break;	
-                        
+
                         case DATA_DECIMAL_FLOAT:
-                        {
-                            double tempData = (unsigned short)wordValues[(startAddress)-strtAddr];
-                            newValueType->analogValue = tempData / 10;
-                        }
-                        break;
+                            newValueType->analogValue = static_cast<double>(wordValues[startAddress - strtAddr]) / 10;
+                            break;
                     }
-                }
-                break;
+                    break;
+
                 case DIGITAL:
-                {
-                    if( bitNumber == -1 )
+                    if (bitNumber == -1)
                     {
-                        newValueType->digitalValue = coilValues[(startAddress-strtAddr)];;
+                        newValueType->digitalValue = coilValues[startAddress - strtAddr];
                     }
                     else
                     {
-                        unsigned short unsData = (unsigned short )wordValues[startAddress-strtAddr];
-                        int maskVal = pow( 2,(bitNumber) );		
-                        newValueType->digitalValue = ( unsData & maskVal ) != 0x00;
+                        unsigned short val = wordValues[startAddress - strtAddr];
+                        newValueType->digitalValue = (val & (1 << bitNumber)) != 0;
                     }
-                }
-                break;
+                    break;
+
                 case STRING:
                 {
-                    std::string resString = "";
+                    std::string resString;
+                    int i = startAddress - strtAddr;
                     int registerNo = it.second->lastAddress;
-                    int i = startAddress-strtAddr; // for reading multiple string in same or diff blocks.
-                    while( (registerNo > 0)  && (i <= wordQuant ))
+
+                    while ((registerNo > 0) && (i <= wordQuant))
                     {
-                        char firstc = MODBUS_GET_HIGH_BYTE(wordValues[i]);	
-                        char secondc = MODBUS_GET_LOW_BYTE(wordValues[i]);
-                        resString+= secondc;
-                        resString+= firstc;
+                        resString += MODBUS_GET_LOW_BYTE(wordValues[i]);
+                        resString += MODBUS_GET_HIGH_BYTE(wordValues[i]);
                         i++;
                         registerNo--;
                     }
+                    break;
                 }
-                break;
             }
-            
-            if( it.second->isAlarm )
-            {
-                CreateTelemetryAndAlertJson( it.second->isAlarm, it.second->vt, newValueType, datatype, propertyName );
-            }
+
+            // Push data to telemetry
+            if (it.second->isAlarm)
+                CreateTelemetryAndAlertJson(it.second->isAlarm, it.second->vt, newValueType, datatype, propertyName);
             else
-            {
-                CreateTelemetryJson( newValueType, datatype, propertyName, grpName );
-            }
-            
-            if( newValueType )
-            {
-                delete newValueType;
-            }
-            
+                CreateTelemetryJson(newValueType, datatype, propertyName, grpName);
+
+            delete newValueType;
             NoOfVariablesRead++;
         }
-    
     }
-    catch(nlohmann::json::exception &e)
-	{
-		logg.str("");
-		logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Error code :  " << e.id << " Error Messag : " << e.what();
-		std::cout << logg.str() << "\n\n";
-	}
-	catch( ... )
-	{
-		logg.str("");
-		logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Unknown exception occured.";
-        std::cout << logg.str() << "\n\n";
-	}
-	return NoOfVariablesRead;
+    catch (nlohmann::json::exception &e)
+    {
+        std::cout << "ParseValues JSON error " << e.id << ": " << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cout << "ParseValues unknown exception occurred." << std::endl;
+    }
+
+    return NoOfVariablesRead;
 }
 
 
