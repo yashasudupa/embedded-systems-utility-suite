@@ -1,31 +1,37 @@
 #include "ModbusTCPMaster.h"
 
+// Utility macro to combine two bytes (low and high) into a short
 #define MAKEWORD( l, h )	((short)(((char)(l)) | ((short)((char)(h))) << 8))
 
+// Extern "C" block is used to prevent C++ name mangling so the functions can be accessed from C code
 extern "C" 
 {
+	// Destroy the ModbusTCPMaster object
 	void DestroyObject( ModbusTCPMaster* object )
 	{
 		delete object;
 	}
 	
+	// Factory function to create a new ModbusTCPMaster object
 	DeviceLibraryWrapper * CreateObject( std::string processName )
 	{
 		return new ModbusTCPMaster( processName ) ;
 	}
 }
 
+// Constructor: initializes member variables and constructs command JSON with default metadata
 ModbusTCPMaster::ModbusTCPMaster( std::string processName ):
 	m_processName( processName ) 
 {
 	m_configFilePath = "./config/" + m_processName + "/";
     
+    // Setting up initial command JSON
     m_commandJson[APP_NAME] = processName;
 	m_commandJson[APP_ID] = GetProcessIdByName(processName);
 	m_commandJson[COMMAND_TYPE] = RESPONSE;
 }
 
-
+// Destructor: Cleans up all dynamically allocated AssetManager objects and joins the communication thread
 ModbusTCPMaster::~ModbusTCPMaster()
 {
     auto iter = m_connectionMap.begin();
@@ -42,6 +48,7 @@ ModbusTCPMaster::~ModbusTCPMaster()
 	m_connectionThreadObj.join();
 }
 
+// Discovers devices by reading the REGISTER_DEVICES_JSON config file
 nlohmann::json ModbusTCPMaster::Discoverdevice()
 {
 	std::string configFilePath = m_configFilePath + REGISTER_DEVICES_JSON;
@@ -49,6 +56,7 @@ nlohmann::json ModbusTCPMaster::Discoverdevice()
 	return m_discoverdeviceConfigJson;
 }
 
+// Connects a device by creating an AssetManager object if it doesn't already exist
 bool ModbusTCPMaster::Connectdevice ( std::string deviceId, nlohmann::json jsonObj )
 {
     try
@@ -72,6 +80,7 @@ bool ModbusTCPMaster::Connectdevice ( std::string deviceId, nlohmann::json jsonO
 	return true;
 }
 
+// Loads device properties from a JSON config file and stores them in the corresponding AssetManager object
 nlohmann::json ModbusTCPMaster::LoadDeviceProperties( std::string deviceId, std::string processName )
 {
     try
@@ -99,13 +108,11 @@ nlohmann::json ModbusTCPMaster::LoadDeviceProperties( std::string deviceId, std:
                 assetManagerObj->RegisterPropertiesCB(std::bind( &ModbusTCPMaster::PropertiesReceiver, this, std::placeholders::_1));
             }
             
-            
             std::cout << "fileContentJson : " << fileContentJson << "\n\n";
             if( assetManagerObj )
             {
                 assetManagerObj->SetPropertyJson( fileContentJson );
             }
-            
 		}
 	}
 	catch( nlohmann::json::exception &e )
@@ -114,17 +121,16 @@ nlohmann::json ModbusTCPMaster::LoadDeviceProperties( std::string deviceId, std:
 	}
 
 	return NULL;
-    
 }
 
-// input = json
+// Placeholder for getting device state; currently returns an empty JSON
 nlohmann::json ModbusTCPMaster::GetDeviceState( nlohmann::json devicePropertyJson )
 {
 	nlohmann::json obj;	
 	return obj;
 }
 
-// input = json
+// Updates the device state by writing setpoints for each property; returns true if successful
 bool ModbusTCPMaster::SetDeviceState( nlohmann::json devicePropertyJson )
 {
 	int returnStatus = -1;
@@ -141,41 +147,31 @@ bool ModbusTCPMaster::SetDeviceState( nlohmann::json devicePropertyJson )
 		std::cout << e.id << " : " << e.what() << std::endl;
 	}
 	
-	
-	if( returnStatus > 0)
-	{
-		return true;
-	}
-	
-	return false;
+	return (returnStatus > 0);
 }
 
-
+// Stub for writing a setpoint; currently returns -1 (to be implemented)
 short ModbusTCPMaster::WriteSetPoint( nlohmann::json devicePropertyJson )
 {
 	return -1;
 }
 
-
+// Sets configuration parameters based on the command type present in the JSON config
 void ModbusTCPMaster::SetConfig( nlohmann::json config )
 {
 	std::string message ="";
 	try
 	{
 		std::string configJson = config[COMMAND];
+        
+        // Handle setting configurations for all devices
         if( configJson == SET_CONFIGURATION )
 		{
 			m_deviceConfigJson = config;
 			for( auto& x : config["assets"].items() )
 			{
-				nlohmann::json keyJson;
-				keyJson[DEVICE_ID] = x.key();
-                nlohmann::json valueJson;
-                valueJson = x.value();
-				std::string deviceId = keyJson[DEVICE_ID];
-                
+				std::string deviceId = x.key();
                 auto itr = m_connectionMap.find(deviceId);
-                
                 if( itr != m_connectionMap.end() )
                 {
                     AssetManager *assetObj = itr->second;
@@ -184,17 +180,16 @@ void ModbusTCPMaster::SetConfig( nlohmann::json config )
                         assetObj->SetConfig( config );
                     }
                 }
-
 			}
 		}
+        // Handle slave registration
         else if ( configJson == REGISTER_SLAVES )
         {
             std::string deviceId = config[DEVICE_ID];
             auto it = m_connectionMap.find(deviceId);
-            AssetManager *assetManagerObj;
             if (it != m_connectionMap.end())
             {
-                assetManagerObj = it->second;
+                AssetManager *assetManagerObj = it->second;
                 if( assetManagerObj )
                 {
                     assetManagerObj->DeRegisterSlaves( config );
@@ -202,6 +197,7 @@ void ModbusTCPMaster::SetConfig( nlohmann::json config )
                 }
             }
         }
+		// Handle device deregistration and cleanup
 		else if( configJson == DEREGISTER_DEVICES )
 		{
 			std::string deviceId = config[DEVICE_ID];
@@ -218,14 +214,11 @@ void ModbusTCPMaster::SetConfig( nlohmann::json config )
 				}
 			}
 		}
+		// Handle rule/property updates or device mode change
 		else if( configJson == "register_rule_device_properties" || configJson == CHANGE_DEVICE_MODE )
 		{
 			std::string deviceId = config[DEVICE_ID];
-            
-            std::cout << "ModbusTCPMaster::SetConfig() : deviceId - " << deviceId << std::endl;
-            
 			auto it = m_connectionMap.find( deviceId );
-
 			if( it != m_connectionMap.end() )
 			{
 				AssetManager *assetObj = it->second;
@@ -242,13 +235,13 @@ void ModbusTCPMaster::SetConfig( nlohmann::json config )
 	}
 }
 
-
+// Callback handler that receives JSON property updates and forwards them to the registered callback
 void ModbusTCPMaster::PropertiesReceiver( nlohmann::json jsonObject )
 {
 	m_dataCB( jsonObject );
 }
 
-
+// Sends a response from cloud-to-device with metadata like timestamp, status, message, etc.
 bool ModbusTCPMaster::SendC2DResponse( nlohmann::json jsonObj, std::string message, std::string deviceId )
 {
 	nlohmann::json c2dJson;
@@ -262,6 +255,7 @@ bool ModbusTCPMaster::SendC2DResponse( nlohmann::json jsonObj, std::string messa
 	c2dJson[MESSAGE] = message.c_str();
 	c2dJson[TYPE] = "notification";
 	
+	// Trigger callback with response JSON
 	if ( m_dataCB )
 	{
 		m_dataCB( c2dJson );
@@ -269,4 +263,3 @@ bool ModbusTCPMaster::SendC2DResponse( nlohmann::json jsonObj, std::string messa
 	}
 	return false;
 }
-
