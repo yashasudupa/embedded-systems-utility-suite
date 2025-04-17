@@ -1,125 +1,135 @@
-
-
 #include "GlobalOperations.h"
 
-
-std::string GetLastToken ( std::string value, std::string seprator )
+// Returns the last token after the specified separator in a given string.
+std::string GetLastToken(std::string value, std::string seprator)
 {
-	std::size_t found = value.find_last_of( seprator );
-
-	std::cout << " file: " << value.substr( found+1 ) << '\n';
-	return value.substr( found+1 );
+    std::size_t found = value.find_last_of(seprator);
+    std::cout << " file: " << value.substr(found + 1) << '\n';
+    return value.substr(found + 1);
 }
 
-nlohmann::json ReadAndSetConfiguration (std::string fileName )
+// Reads a configuration file and parses it into a JSON object.
+nlohmann::json ReadAndSetConfiguration(std::string fileName)
 {
-	std::ifstream file(fileName.c_str());
-	nlohmann::json configurationJson;
-	if ( file )
-	{
-		std::string fileContentString((std::istreambuf_iterator<char>(file)),
-		std::istreambuf_iterator<char>());
-		
-		std::cout << "configuration file content : " << fileContentString << std::endl;
-		try
-		{
-			configurationJson = nlohmann::json::parse(fileContentString.c_str());
-			std::cout << "configuration file content : " << configurationJson << std::endl;
-		}
-		catch(nlohmann::json::exception &e)
-		{
-			std::cout << e.id << " : " << e.what() << std::endl;
-		}
-	}
-	else
-	{
-		std::cout << "File Not found : " << fileName << std::endl;
-	}
-	return configurationJson;
+    std::ifstream file(fileName.c_str());
+    nlohmann::json configurationJson;
+
+    if (file)
+    {
+        // Read entire file content into a string
+        std::string fileContentString((std::istreambuf_iterator<char>(file)),
+                                      std::istreambuf_iterator<char>());
+        std::cout << "configuration file content : " << fileContentString << std::endl;
+
+        try
+        {
+            // Parse string into JSON object
+            configurationJson = nlohmann::json::parse(fileContentString.c_str());
+            std::cout << "configuration file content : " << configurationJson << std::endl;
+        }
+        catch (nlohmann::json::exception &e)
+        {
+            std::cout << e.id << " : " << e.what() << std::endl;
+        }
+    }
+    else
+    {
+        std::cout << "File Not found : " << fileName << std::endl;
+    }
+
+    return configurationJson;
 }
 
-bool WriteConfiguration( std::string fileName, nlohmann::json contentObj )
+// Writes the provided JSON object into a specified configuration file.
+bool WriteConfiguration(std::string fileName, nlohmann::json contentObj)
 {
-	std::ofstream outdata; 
-	
-	outdata.open( fileName.c_str() ); // opens the file
-	if( !outdata )
-	{ // file couldn't be opened
-		std::cout  << "Error: file could not be opened" << std::endl;
-		return false;
-	}
-	
-	outdata << contentObj;
-	outdata.close();
-	return true;
+    std::ofstream outdata;
+
+    outdata.open(fileName.c_str()); // Opens file for writing
+    if (!outdata)
+    {
+        std::cout << "Error: file could not be opened" << std::endl;
+        return false;
+    }
+
+    outdata << contentObj; // Write JSON content to file
+    outdata.close();
+    return true;
 }
 
+// Returns a current timestamp string in ISO 8601 format with millisecond precision.
 std::string GetTimeStamp()
 {
     char buf[100];
     char buf1[100];
     int millisec;
-    struct tm* tm_info;
+    struct tm *tm_info;
     struct timeval tv;
 
-    gettimeofday(&tv, NULL);
+    gettimeofday(&tv, NULL); // Get current time
+    millisec = lrint(tv.tv_usec / 1000.0); // Convert microseconds to milliseconds
 
-    millisec = lrint(tv.tv_usec/1000.0); // Round to nearest millisec
-    if (millisec>=1000) 
-    { 
-        // Allow for rounding up to nearest second
-        millisec -=1000;
+    if (millisec >= 1000)
+    {
+        // Handle case where milliseconds round up to next second
+        millisec -= 1000;
         tv.tv_sec++;
     }
-    
-    tm_info = localtime(&tv.tv_sec);
-    strftime(buf, 26, "%Y-%m-%dT%H:%M:%S", tm_info);
-    sprintf(buf1,"%s.%03dZ", buf, millisec);
+
+    tm_info = localtime(&tv.tv_sec); // Convert seconds to local time structure
+    strftime(buf, 26, "%Y-%m-%dT%H:%M:%S", tm_info); // Format time string
+    sprintf(buf1, "%s.%03dZ", buf, millisec); // Append milliseconds and 'Z'
     return buf1;
 }
 
-long GetProcessIdByName( std::string processName )
+// Returns the process ID (PID) of a given process by its name.
+long GetProcessIdByName(std::string processName)
 {
-	char line[100];
+    char line[100];
     std::string pidCommand = "pidof ";
-    
+
+    // On certain systems, "-s" is used to return a single PID
     #ifdef KEMSYS_GATEWAY
         pidCommand += processName;
     #else
         pidCommand += "-s " + processName;
     #endif
-    
+
     pid_t pid = 0;
-	FILE *cmd = popen(pidCommand.c_str(), "r");
-    if( cmd != NULL )
+    FILE *cmd = popen(pidCommand.c_str(), "r"); // Run the command
+
+    if (cmd != NULL)
     {
-        fgets(line, 100, cmd);
-        pid = strtoul(line, NULL, 10);
+        fgets(line, 100, cmd); // Read output from command
+        pid = strtoul(line, NULL, 10); // Convert string to long
         pclose(cmd);
     }
+
     return pid;
 }
 
-float round_value( float var )
+// Rounds a float to 2 decimal places and returns it.
+float round_value(float var)
 {
-    char str[40]; 
-    sprintf(str, "%.2f", var);
-    sscanf(str, "%f", &var); 
-	std::cout << "value : " << var << "\n\n";
-    return var; 
+    char str[40];
+    sprintf(str, "%.2f", var); // Format float to 2 decimal places as string
+    sscanf(str, "%f", &var);   // Convert string back to float
+    std::cout << "value : " << var << "\n\n";
+    return var;
 }
 
-// Generate and return current date time in epoch format
-//used for Glens and HSPCB output Driver
+// Generates and returns the current time in epoch format (seconds since Jan 1, 1970).
+// Useful for timestamps where a compact format is needed.
 std::string GenerateCurrentDateTimeInEPOCH()
 {
     char buf1[100];
-    long            ms; // Milliseconds
-    time_t          secs;  // Seconds
+    long ms;
+    time_t secs;
     struct timespec spec;
-    clock_gettime(CLOCK_REALTIME, &spec);
-    secs  = spec.tv_sec;
-    
-    sprintf(buf1,"%s", secs);
+
+    clock_gettime(CLOCK_REALTIME, &spec); // Get current real time
+    secs = spec.tv_sec;
+
+    sprintf(buf1, "%s", secs); // Convert to string
     return buf1;
 }
