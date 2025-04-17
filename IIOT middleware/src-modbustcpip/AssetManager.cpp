@@ -10,8 +10,8 @@ AssetManager::AssetManager( std::string assetId, std::string processName ):
     m_configFilePath = "./config/" + m_processName + "/";
     int pid = GetProcessIdByName( processName );
     m_commandJson[APP_NAME] = processName;
-	m_commandJson[APP_ID] = pid;
-	m_commandJson[COMMAND_TYPE] = RESPONSE;
+    m_commandJson[APP_ID] = pid;
+    m_commandJson[COMMAND_TYPE] = RESPONSE;
 
 }
 
@@ -37,30 +37,18 @@ void AssetManager::LoadProperties()
     {
         RegisterDevice( m_slaveJson );
     }
-    
-    /*std::string propertyJsonPath = m_configFilePath + m_assetId + ".json";
-    m_propertyJson = ReadAndSetConfiguration( propertyJsonPath );
-    std::cout << "************************************ReadProperties created for : " <<  m_propertyJson <<"\n\n";
-    if( !m_propertyJson.is_null() )
-    {
-        std::cout << "************************************ReadProperties created for : " <<  m_propertyJson <<"\n\n";
-        SetPropertyJson( m_propertyJson );
-    }*/
 }
 
 void AssetManager::SetPropertyJson( nlohmann::json propertyJson )
 {
     m_propertyJson = propertyJson;
-     std::cout << " ********************** propertyJson : "<< propertyJson << std::endl;
-     
-     if(m_slaveConfigMap.empty())
-     {
-          std::cout << " ********************** EMPTY : \n\n";
-     }
+    if(m_slaveConfigMap.empty())
+    {
+          std::cout << "EMPTY : \n\n";
+    }
     for( auto it = m_slaveConfigMap.rbegin(); it != m_slaveConfigMap.rend(); it++ )
     {
-        std::cout << " ***************** SlaveID : "<< it->first << std::endl;
-        
+        std::cout << "SlaveID : "<< it->first << std::endl;
         DEVICEINFOSTRUCT *devInfoStruct = it->second;
         ReadProperties *readPropertiesObj = (ReadProperties*)devInfoStruct->readPropertiesObj;
         readPropertiesObj->SetThreadStatus( false );
@@ -92,9 +80,8 @@ void AssetManager::RegisterDevice( nlohmann::json slaveJson )
                 readPropertiesObj->UpdateConfigFile();
                 readPropertiesObj->SetThreadStatus( false );
                 readPropertiesObj->StartDeviceStateGetterThread();
-                
-                std::cout << "************************************ReadProperties created for : " <<  slaveId <<"\n\n";
-                
+                std::cout << "ReadProperties created for : " <<  slaveId <<"\n\n";
+
                 nlohmann::json config;
                 config[SLAVE_ID] = slaveId;
                 if( slaveJson.contains(SUB_JOB_ID) )
@@ -109,8 +96,6 @@ void AssetManager::RegisterDevice( nlohmann::json slaveJson )
                 devInfoStruct->assetId = m_assetId;
                 m_slaveConfigMap[slaveId] = devInfoStruct;
                 twinReportedJson["apps"][m_processName]["asset_configuration"][m_assetId]["slaves"][slaveId] = "Provisioned";
-                
-                std::cout << "\n\n\ntmpJson ::: " << tmpJson << std::endl;
             }
         }
         
@@ -126,16 +111,15 @@ void AssetManager::RegisterDevice( nlohmann::json slaveJson )
             {
                 twinReportedJson[SUB_JOB_ID] = slaveJson[SUB_JOB_ID];
             }
-            std::cout << "************************************ReadProperties created for : " <<  twinReportedJson <<"\n\n";
             m_propertiesCB( twinReportedJson );
-            std::cout << "************************************ReadProperties created for : " <<  twinReportedJson <<"\n\n";
+            std::cout << "ReadProperties created for : " <<  twinReportedJson <<"\n\n";
             twinReportedJson.clear();
         }
     }
     catch( nlohmann::json::exception &e )
-	{
+    {
 		std::cout << " SetConfig EXCEPTION : "<< e.id << " : " << e.what() << std::endl;
-	}
+    }
 }
 
 void AssetManager::DeRegisterSlaves( nlohmann::json config )
@@ -157,13 +141,12 @@ void AssetManager::DeRegisterSlaves( nlohmann::json config )
                 tmpJson[SUB_JOB_ID] = config[SUB_JOB_ID];
             }
             std::string slaveId = tmpJson["slaveId"];
-            std::cout << " ############################################ slaveId : " << slaveId << "\n\n";
+            std::cout << "slaveId : " << slaveId << "\n\n";
             
             if( config["slaves"][slaveId].is_null() )
             {
                 twinReportedJson["apps"][m_processName]["asset_configuration"][m_assetId]["slaves"][slaveId] = "Deprovisioned";
-                std::cout << " ############################################ true :m_slaveConfigMap empty " << twinReportedJson <<" \n\n";
-    
+                std::cout << "m_slaveConfigMap empty " << twinReportedJson <<" \n\n";
                 
                 auto itr1 = m_slaveConfigMap.find( slaveId );
                 if( itr1 != m_slaveConfigMap.end() )
@@ -190,14 +173,12 @@ void AssetManager::DeRegisterSlaves( nlohmann::json config )
                         connectionFailJson[DEVICE_ID] = m_assetId;
                         m_propertiesCB( connectionFailJson );
                         m_slaveConfigMap.erase( itr1 );
-                        
-                        //delete readPropertiesObj;
                     }
                 }
             }
         }
         
-        std::cout << " **************************** twinReportedJson : " << twinReportedJson << "\n\n";
+        std::cout << "twinReportedJson : " << twinReportedJson << "\n\n";
         if( !twinReportedJson.is_null() )
         {
             twinReportedJson[COMMAND_INFO] = m_commandJson;
@@ -206,7 +187,6 @@ void AssetManager::DeRegisterSlaves( nlohmann::json config )
             {
                 twinReportedJson[SUB_JOB_ID] = config[SUB_JOB_ID];
             }
-            std::cout << " **************************** twinReportedJson2 : " << twinReportedJson << "\n\n";
             m_propertiesCB( twinReportedJson );
         }
         
@@ -222,81 +202,80 @@ void AssetManager::SetConfig( nlohmann::json config )
 {
 	try
 	{
-		std::string configJson = config[COMMAND];
-		transform(configJson.begin(), configJson.end(), configJson.begin(), ::tolower);
-		if( configJson == SET_CONFIGURATION )
+	     std::string configJson = config[COMMAND];
+	     transform(configJson.begin(), configJson.end(), configJson.begin(), ::tolower);
+	     if( configJson == SET_CONFIGURATION )
+	     {
+            	if( config["assets"][m_assetId].contains( "turbo_mode_timeout_in_ms" ) )
+            	{
+                	m_turboTimeout = config["assets"][m_assetId]["turbo_mode_timeout_in_ms"];
+            	}
+            	for( auto it = m_slaveConfigMap.begin(); it != m_slaveConfigMap.end(); ++it )
+            	{
+	                DEVICEINFOSTRUCT *devInfoStruct = it->second;
+	                ReadProperties *readPropertiesObj = (ReadProperties*)devInfoStruct->readPropertiesObj;
+	                readPropertiesObj->UpdateConfigFile();
+            	}
+	     }
+             else if( configJson == DEREGISTER_DEVICES )
+	     {
+            	nlohmann::json twinReportedJson;
+            	nlohmann::json tempSlaveJson;
+            	tempSlaveJson = m_slaveJson;
+            	for( auto& x : m_slaveJson["slaves"].items() )
+            	{
+                	std::string slaveId = x.key();
+                	if( !config["slaves"].contains(slaveId) )
+                	{
+	                    nlohmann::json tmpJson;
+	                    tmpJson["slave_id"] = config["slave_id"];
+	                    if( config.contains(SUB_JOB_ID) )
+	                    {
+	                        tmpJson[SUB_JOB_ID] = config[SUB_JOB_ID];
+	                    }
+	                    SendNotificationToCloud(tmpJson, 2);
+	                    tempSlaveJson["slaves"].erase(slaveId);
+	                    twinReportedJson["apps"][m_processName]["asset_configuration"][m_assetId]["slaves"][slaveId] = "Deprovisioned";
+                	}
+            	}
+            
+            	m_slaveJson = tempSlaveJson;
+            	std::string configFilePath = m_configFilePath + m_assetId + "_slaves.json";
+            	WriteConfiguration( configFilePath, m_slaveJson);
+            
+            	if( !twinReportedJson.is_null() )
+            	{
+                	twinReportedJson[COMMAND_INFO] = m_commandJson;
+                	twinReportedJson[TYPE] = "reported_twin";
+                	if( config.contains(SUB_JOB_ID) )
+                	{
+                    		twinReportedJson[SUB_JOB_ID] = config[SUB_JOB_ID];
+                	}
+                	m_propertiesCB( twinReportedJson );
+                	twinReportedJson.clear();
+            	}
+             }
+	     else if( configJson == CHANGE_DEVICE_MODE )
+	     {
+		nlohmann::json errorTelemetryModeJson;
+		std::string deviceMode = config[TELEMETRY_MODE];
+		bool setflag = false;
+		if( m_deviceMode == deviceMode )
 		{
-            if( config["assets"][m_assetId].contains( "turbo_mode_timeout_in_ms" ) )
-            {
-                m_turboTimeout = config["assets"][m_assetId]["turbo_mode_timeout_in_ms"];
-            }
-            for( auto it = m_slaveConfigMap.begin(); it != m_slaveConfigMap.end(); ++it )
-            {
-                DEVICEINFOSTRUCT *devInfoStruct = it->second;
-                ReadProperties *readPropertiesObj = (ReadProperties*)devInfoStruct->readPropertiesObj;
-                readPropertiesObj->UpdateConfigFile();
-            }
+                	SendNotificationToCloud( config, 5 );
 		}
-        else if( configJson == DEREGISTER_DEVICES )
-		{
-            nlohmann::json twinReportedJson;
-            nlohmann::json tempSlaveJson;
-            tempSlaveJson = m_slaveJson;
-            for( auto& x : m_slaveJson["slaves"].items() )
-            {
-                std::string slaveId = x.key();
-                
-                if( !config["slaves"].contains(slaveId) )
-                {
-                    nlohmann::json tmpJson;
-                    tmpJson["slave_id"] = config["slave_id"];
-                    if( config.contains(SUB_JOB_ID) )
-                    {
-                        tmpJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-                    }
-                    SendNotificationToCloud(tmpJson, 2);
-                    tempSlaveJson["slaves"].erase(slaveId);
-                    twinReportedJson["apps"][m_processName]["asset_configuration"][m_assetId]["slaves"][slaveId] = "Deprovisioned";
-                }
-            }
-            
-            m_slaveJson = tempSlaveJson;
-            std::string configFilePath = m_configFilePath + m_assetId + "_slaves.json";
-            WriteConfiguration( configFilePath, m_slaveJson);
-            
-            if( !twinReportedJson.is_null() )
-            {
-                twinReportedJson[COMMAND_INFO] = m_commandJson;
-                twinReportedJson[TYPE] = "reported_twin";
-                if( config.contains(SUB_JOB_ID) )
-                {
-                    twinReportedJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-                }
-                m_propertiesCB( twinReportedJson );
-                twinReportedJson.clear();
-            }
-        }
-		else if( configJson == CHANGE_DEVICE_MODE )
-		{
-			nlohmann::json errorTelemetryModeJson;
-			std::string deviceMode = config[TELEMETRY_MODE];
-			bool setflag = false;
-			if( m_deviceMode == deviceMode )
-			{
-                SendNotificationToCloud( config, 5 );
-			}
-			else if( deviceMode == "turbo" )
-			{
+	    else if( deviceMode == "turbo" )
+	    {
                 setflag = true;
                 m_deviceMode = "turbo";
                 SendNotificationToCloud( config ,3 );
-			}
-			else
-			{
+	    }
+	    else
+	    {
                 setflag = true;
-				m_deviceMode = "normal";
+		m_deviceMode = "normal";
                 SendNotificationToCloud( config, 4 );
-			}	
+	    }	
             
             if( setflag )
             {
@@ -320,57 +299,47 @@ void AssetManager::SetConfig( nlohmann::json config )
                 {
                     m_flag = false;
                     m_threadObj = std::thread([this,config](){
-                        long turboTimeout = m_turboTimeout + 20;
-                        std::cout << turboTimeout << "******************##################\n\n";
-                        
-                        sleep( turboTimeout/1000 );
-                        m_deviceMode = "normal";
-                        
-                        nlohmann::json twinReportedJson1;
-                        twinReportedJson1[COMMAND_INFO] = m_commandJson;
-                        twinReportedJson1[TYPE] = "reported_twin";
-                        twinReportedJson1["apps"][m_processName][STATUS] = "Running";
-                        twinReportedJson1["apps"][m_processName]["asset_configuration"][m_assetId][TELEMETRY_MODE] = m_deviceMode;
-                        m_propertiesCB( twinReportedJson1 ); 
-                        
-                        nlohmann::json connectionFailJson1;
-                        connectionFailJson1[COMMAND_INFO] = m_commandJson;
-                        connectionFailJson1[SUB_JOB_ID] = config[SUB_JOB_ID];
-                        connectionFailJson1[TYPE] = "notification";
-                        connectionFailJson1[MESSAGE] = "Successfully configured to normal mode";
-                        connectionFailJson1[CONFIGURATION][TELEMETRY_MODE] = "normal";
-                        connectionFailJson1[TIMESTAMP] = GetTimeStamp();
-                        connectionFailJson1[DEVICE_ID] = m_assetId;
-                        connectionFailJson1[COMMAND_INFO] = m_commandJson;
-                        m_propertiesCB( connectionFailJson1 ); 
-                        
-                        
-                    });
+                    long turboTimeout = m_turboTimeout + 20;                    
+                    sleep( turboTimeout/1000 );
+                    m_deviceMode = "normal";
+            
+		   nlohmann::json twinReportedJson1;
+		   twinReportedJson1[COMMAND_INFO] = m_commandJson;
+		   twinReportedJson1[TYPE] = "reported_twin";
+		   twinReportedJson1["apps"][m_processName][STATUS] = "Running";
+		   twinReportedJson1["apps"][m_processName]["asset_configuration"][m_assetId][TELEMETRY_MODE] = m_deviceMode;
+		   m_propertiesCB( twinReportedJson1 ); 
+		
+		   nlohmann::json connectionFailJson1;
+		   connectionFailJson1[COMMAND_INFO] = m_commandJson;
+		   connectionFailJson1[SUB_JOB_ID] = config[SUB_JOB_ID];
+		   connectionFailJson1[TYPE] = "notification";
+		   connectionFailJson1[MESSAGE] = "Successfully configured to normal mode";
+		   connectionFailJson1[CONFIGURATION][TELEMETRY_MODE] = "normal";
+		   connectionFailJson1[TIMESTAMP] = GetTimeStamp();
+		   connectionFailJson1[DEVICE_ID] = m_assetId;
+		   connectionFailJson1[COMMAND_INFO] = m_commandJson;
+		   m_propertiesCB( connectionFailJson1 );      
+                   });
                     
-                    if( m_flag == true )
-                    {
-                        m_flag = false;
-                        
-                        std::cout << "Normal Twin : " << twinReportedJson << "\n\n";
-                    }
-                }   
+                   if( m_flag == true )
+                   {
+                      m_flag = false;     
+                  }
+               }   
+             }
+	    }
+	    else if( configJson == "register_rule_device_properties" )
+	    {
+                  int sizeMap = m_slaveConfigMap.size();
+                  for( auto it = m_slaveConfigMap.begin(); it != m_slaveConfigMap.end(); ++it )
+                  {
+                      DEVICEINFOSTRUCT *devInfoStruct = it->second;
+                      ReadProperties *readPropertiesObj = (ReadProperties*)devInfoStruct->readPropertiesObj;
+                      readPropertiesObj->SetConfig( config );
+                  }
+                  std::cout << "AssetManager::SetConfig(): register_rule_device_properties : config : " << config << std::endl;
             }
-		}
-		else if( configJson == "register_rule_device_properties" )
-		{
-            int sizeMap = m_slaveConfigMap.size();
-            for( auto it = m_slaveConfigMap.begin(); it != m_slaveConfigMap.end(); ++it )
-            {
-                DEVICEINFOSTRUCT *devInfoStruct = it->second;
-                ReadProperties *readPropertiesObj = (ReadProperties*)devInfoStruct->readPropertiesObj;
-                readPropertiesObj->SetConfig( config );
-            }
-            std::cout << "AssetManager::SetConfig(): register_rule_device_properties : config : " << config << std::endl;
-		}
-		/*else if( configJson == SET_VALUE_CANAGE )
-		{
-			m_changeValueState = config["scv"];
-		}*/
 	}
 	catch( nlohmann::json::exception &e )
 	{
@@ -421,7 +390,6 @@ void AssetManager::SendNotificationToCloud( nlohmann::json config, int caseId )
             }
             connectionFailJson["slave_id"] = sid;
             connectionFailJson[DEVICE_ID] = m_assetId;
-            std::cout << " **************************** connectionFailJson : " << connectionFailJson << "\n\n";
         }
         break;   
         case 3:
@@ -434,8 +402,7 @@ void AssetManager::SendNotificationToCloud( nlohmann::json config, int caseId )
             connectionFailJson[TIMESTAMP] = GetTimeStamp();
             connectionFailJson[COMMAND_INFO] = m_commandJson;
         }
-        break;
-        
+        break;        
         case 4:
         {
             connectionFailJson[SUB_JOB_ID] = config[SUB_JOB_ID];
@@ -447,7 +414,6 @@ void AssetManager::SendNotificationToCloud( nlohmann::json config, int caseId )
             connectionFailJson[COMMAND_INFO] = m_commandJson;
         }
         break;
-        
         case 5:
         {
             std::string deviceMode = config[TELEMETRY_MODE];
@@ -463,15 +429,12 @@ void AssetManager::SendNotificationToCloud( nlohmann::json config, int caseId )
     
     if( connectionFailJson.contains(MESSAGE) )
     {
-        std::cout << " **************************** connectionFailJson1 : " << connectionFailJson << "\n\n";
         m_propertiesCB( connectionFailJson );
     }
 }
 
-
 void AssetManager::RegisterPropertiesCB( std::function<void(nlohmann::json)> cb )
 {
-    std::cout <<" AssetManager :: RegisterPropertiesCB() : callback set " <<  std::endl;
 	m_propertiesCB = cb;
 }
 
