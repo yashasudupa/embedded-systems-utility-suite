@@ -652,45 +652,49 @@ short ReadProperties::ParseValues(int functionCode, long strtAddr, short wordQua
     return NoOfVariablesRead;
 }
 
-
-
-void ReadProperties::CreateTelemetryJson( VALUE_TYPE *newValueType, char datatype, 
-                                          std::string propertyName, std::string grpName  )
+// Function to create JSON entries for telemetry data based on value type (analog/digital/string)
+void ReadProperties::CreateTelemetryJson(VALUE_TYPE *newValueType, char datatype, 
+                                         std::string propertyName, std::string grpName)
 {
-    switch( datatype )
+    switch (datatype)
     {
         case ANALOG:
         {
+            // Populate JSON for analog telemetry data
             m_cmmonJson[m_deviceId][grpName]["m"][propertyName] = newValueType->analogValue;
             m_localTelemetryJson[propertyName] = newValueType->analogValue;
-            
-            auto it = m_ruleEnginePropertyMap.find( propertyName );
-            if( it != m_ruleEnginePropertyMap.end() )
+
+            // If property exists in rule engine map, update rule engine JSON
+            auto it = m_ruleEnginePropertyMap.find(propertyName);
+            if (it != m_ruleEnginePropertyMap.end())
             {
                 m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->analogValue;
             }
         }
         break;
+
         case DIGITAL:
         {
+            // Populate JSON for digital telemetry data
             m_cmmonJson[m_deviceId][grpName]["m"][propertyName] = newValueType->digitalValue;
             m_localTelemetryJson[propertyName] = newValueType->digitalValue;
-            
-            auto it = m_ruleEnginePropertyMap.find( propertyName );
-            if( it != m_ruleEnginePropertyMap.end() )
+
+            auto it = m_ruleEnginePropertyMap.find(propertyName);
+            if (it != m_ruleEnginePropertyMap.end())
             {
                 m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->digitalValue;
             }
-            
         }
         break;
+
         case STRING:
         {
+            // Populate JSON for string telemetry data
             m_cmmonJson[m_deviceId][grpName]["m"][propertyName] = newValueType->stringValue;
-            m_localTelemetryJson[propertyName] = newValueType->digitalValue;
-            
-            auto it = m_ruleEnginePropertyMap.find( propertyName );
-            if( it != m_ruleEnginePropertyMap.end() )
+            m_localTelemetryJson[propertyName] = newValueType->digitalValue; // Possibly a bug? Should be stringValue?
+
+            auto it = m_ruleEnginePropertyMap.find(propertyName);
+            if (it != m_ruleEnginePropertyMap.end())
             {
                 m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->stringValue;
             }
@@ -699,195 +703,185 @@ void ReadProperties::CreateTelemetryJson( VALUE_TYPE *newValueType, char datatyp
     }
 }
 
-void ReadProperties::CreateTelemetryAndAlertJson( bool isAlertFlag, VALUE_TYPE *oldValueType,
-									VALUE_TYPE *newValueType, char datatype, std::string propertyName )
+// Function to create telemetry and alert JSON based on current and old values
+void ReadProperties::CreateTelemetryAndAlertJson(bool isAlertFlag, VALUE_TYPE *oldValueType,
+                                                 VALUE_TYPE *newValueType, char datatype, std::string propertyName)
 {
     std::stringstream logg;
+
     try
     {
         nlohmann::json alertJson;
         std::string alertTimeStamp = GetTimeStamp();
         std::time_t result = std::time(nullptr);
         std::string messageId = m_deviceId + "_" + std::to_string(result);
-        
+
         alertJson[TIMESTAMP] = alertTimeStamp;
         alertJson[CODE] = propertyName;
-        
-        switch( datatype )
+
+        switch (datatype)
         {
             case ANALOG:
-            {	 
-                if( isAlertFlag )
+            {
+                if (isAlertFlag)
                 {
-                    int alrtCode = atoi(propertyName.c_str() ); //11
-                    int receivedvalue = (int)newValueType->analogValue; //11
+                    int alrtCode = atoi(propertyName.c_str());
+                    int receivedvalue = (int)newValueType->analogValue;
                     bool checkFlag = false;
-                    
-                    if( !m_lastAlertPersistancyJson[ALERT][propertyName][STATUS].is_null() && m_firstTimeAppStartFlag )
+
+                    // On first app start, get persisted alert state
+                    if (!m_lastAlertPersistancyJson[ALERT][propertyName][STATUS].is_null() && m_firstTimeAppStartFlag)
                     {
                         m_lastAlertVal = m_lastAlertPersistancyJson[ALERT][propertyName][STATUS];
-                        if( m_lastAlertVal == alrtCode )
+                        if (m_lastAlertVal == alrtCode)
                         {
                             m_firstTimeAppStartFlag = false;
                             oldValueType->analogValue = m_lastAlertVal;
                         }
                     }
 
-                    
-                    if( m_lastAlertVal == alrtCode )
+                    // Check if existing alert is ending
+                    if (m_lastAlertVal == alrtCode && alrtCode != receivedvalue)
                     {
-                        if( alrtCode != receivedvalue )
+                        if (oldValueType->analogValue != newValueType->analogValue && oldValueType->analogValue != -1)
                         {
-                            if( oldValueType->analogValue != newValueType->analogValue  && oldValueType->analogValue != -1 )
-                            {
-                                oldValueType->analogValue = -1;
-                                if( !m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT].is_null() )
-                                {
-                                    alertJson[ALERT_START_EVENT] = m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT];
-                                }
-                                if( !m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"].is_null() )
-                                {
-                                    alertJson["message_id"] = m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"];
-                                }
-                                 
-                                alertJson[TYPE] = "alertendevent";
-                                alertJson[ALERT_MSG_DATA] = m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA];
-                                m_lastAlertPersistancyJson[ALERT][propertyName] = nullptr;
-                                checkFlag = true;
-                            }
-                        }
-                    }
-                    
-                    if( alrtCode == receivedvalue )
-                    {
-                        if( oldValueType->analogValue != newValueType->analogValue )
-                        {
-                            oldValueType->analogValue = newValueType->analogValue;
-                            m_lastAlertVal = receivedvalue;
-                            m_lastAlertPersistancyJson[ALERT][propertyName][STATUS] =  receivedvalue;
-                            m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"] =  messageId;
-                            m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT] =  alertTimeStamp;
-                            m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA] =  alertTimeStamp;
-                            
-                            alertJson[TYPE] = "alert";//11
-                            alertJson["message_id"] = messageId;
-                            alertJson[ALERT_MSG_DATA] = alertTimeStamp;
+                            oldValueType->analogValue = -1;
+
+                            if (!m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT].is_null())
+                                alertJson[ALERT_START_EVENT] = m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT];
+
+                            if (!m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"].is_null())
+                                alertJson["message_id"] = m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"];
+
+                            alertJson[TYPE] = "alertendevent";
+                            alertJson[ALERT_MSG_DATA] = m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA];
+
+                            m_lastAlertPersistancyJson[ALERT][propertyName] = nullptr;
                             checkFlag = true;
                         }
                     }
-                    
-                    if( checkFlag )
+
+                    // Check if a new alert is triggered
+                    if (alrtCode == receivedvalue && oldValueType->analogValue != newValueType->analogValue)
                     {
-                        WriteConfiguration( m_alertPercistancyFileName, m_lastAlertPersistancyJson );
+                        oldValueType->analogValue = newValueType->analogValue;
+                        m_lastAlertVal = receivedvalue;
+                        m_lastAlertPersistancyJson[ALERT][propertyName][STATUS] = receivedvalue;
+                        m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"] = messageId;
+                        m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_START_EVENT] = alertTimeStamp;
+                        m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA] = alertTimeStamp;
+
+                        alertJson[TYPE] = "alert";
+                        alertJson["message_id"] = messageId;
+                        alertJson[ALERT_MSG_DATA] = alertTimeStamp;
+                        checkFlag = true;
+                    }
+
+                    // If alert was triggered/ended, persist and push to alert array
+                    if (checkFlag)
+                    {
+                        WriteConfiguration(m_alertPercistancyFileName, m_lastAlertPersistancyJson);
                         m_alertJsonArray[DATA].push_back(alertJson);
                         checkFlag = false;
                     }
                 }
                 else
                 {
-                    if( m_changeValueState )
+                    // Normal telemetry collection
+                    if (m_changeValueState && oldValueType->analogValue != newValueType->analogValue)
                     {
-                        if( oldValueType->analogValue != newValueType->analogValue )
-                        {
-                            std::cout << " oldValueType->analogValue : " << oldValueType->analogValue << "\n";
-                            std::cout << " newValueType->analogValue : " << newValueType->analogValue << "\n\n";
-                            oldValueType->analogValue = newValueType->analogValue;
-                            m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->analogValue;
-                        }
+                        oldValueType->analogValue = newValueType->analogValue;
+                        m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->analogValue;
                     }
                     else
                     {
                         m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->analogValue;
-                        std::cout << " newValueType->analogValue : " << newValueType->analogValue << "\n\n";
                     }
-                        
-                    auto it = m_ruleEnginePropertyMap.find( propertyName );
-                    if( it != m_ruleEnginePropertyMap.end() )
+
+                    auto it = m_ruleEnginePropertyMap.find(propertyName);
+                    if (it != m_ruleEnginePropertyMap.end())
                     {
                         m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->analogValue;
                     }
                 }
             }
             break;
+
             case DIGITAL:
             {
-                if( isAlertFlag )
+                if (isAlertFlag)
                 {
-                    if( !m_lastAlertPersistancyJson[ALERT][propertyName][STATUS].is_null() )
-                    {
+                    // Restore old alert state if any
+                    if (!m_lastAlertPersistancyJson[ALERT][propertyName][STATUS].is_null())
                         oldValueType->digitalValue = m_lastAlertPersistancyJson[ALERT][propertyName][STATUS];
-                    }
-                    
-                    if( oldValueType->digitalValue != newValueType->digitalValue )
+
+                    // Compare old and new to detect alert change
+                    if (oldValueType->digitalValue != newValueType->digitalValue)
                     {
                         oldValueType->digitalValue = newValueType->digitalValue;
-                        if( newValueType->digitalValue )
+
+                        if (newValueType->digitalValue)
                         {
-                            m_lastAlertPersistancyJson[ALERT][propertyName][STATUS] =  newValueType->digitalValue;
-                            m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"] =  messageId;
-                            m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA] =  alertTimeStamp;
-                            
+                            m_lastAlertPersistancyJson[ALERT][propertyName][STATUS] = newValueType->digitalValue;
+                            m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"] = messageId;
+                            m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA] = alertTimeStamp;
+
                             alertJson[TYPE] = "alert";
                             alertJson["message_id"] = messageId;
                             alertJson[ALERT_MSG_DATA] = alertTimeStamp;
                         }
                         else
                         {
-                             if( !m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"].is_null() )
-                             {
+                            if (!m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"].is_null())
                                 alertJson["message_id"] = m_lastAlertPersistancyJson[ALERT][propertyName]["message_id"];
-                             }
-                             
+
                             alertJson[TYPE] = "alertendevent";
                             alertJson[ALERT_MSG_DATA] = m_lastAlertPersistancyJson[ALERT][propertyName][ALERT_MSG_DATA];
+
                             m_lastAlertPersistancyJson[ALERT][propertyName] = nullptr;
                         }
-                        
-                        WriteConfiguration( m_alertPercistancyFileName, m_lastAlertPersistancyJson );
+
+                        WriteConfiguration(m_alertPercistancyFileName, m_lastAlertPersistancyJson);
                         m_alertJsonArray[DATA].push_back(alertJson);
                     }
                 }
                 else
                 {
-                    if ( m_changeValueState )
+                    // Digital telemetry update
+                    if (m_changeValueState && oldValueType->digitalValue != newValueType->digitalValue)
                     {
-                        if( oldValueType->digitalValue != newValueType->digitalValue )
-                        {
-                            oldValueType->digitalValue = newValueType->digitalValue;
-                            m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->digitalValue;
-                        }
+                        oldValueType->digitalValue = newValueType->digitalValue;
+                        m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->digitalValue;
                     }
                     else
                     {
                         m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->digitalValue;
                     }
                 }
-            
-                auto it = m_ruleEnginePropertyMap.find( propertyName );
-                if( it != m_ruleEnginePropertyMap.end() )
+
+                auto it = m_ruleEnginePropertyMap.find(propertyName);
+                if (it != m_ruleEnginePropertyMap.end())
                 {
                     m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->digitalValue;
                 }
             }
             break;
+
             case STRING:
             {
-                if ( m_changeValueState )
+                // Telemetry for string values
+                if (m_changeValueState && strcmp(oldValueType->stringValue, newValueType->stringValue) != 0)
                 {
-                    if( oldValueType->stringValue != newValueType->stringValue )
-                    {
-                        strcpy( oldValueType->stringValue, newValueType->stringValue );
-                        //oldValueType->stringValue = newValueType->stringValue;
-                        m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->stringValue;
-                    }
+                    strcpy(oldValueType->stringValue, newValueType->stringValue);
+                    m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->stringValue;
                 }
                 else
                 {
                     m_telemetryJson[MEASURED_PROPERTY_TYPE][propertyName] = newValueType->stringValue;
                 }
 
-                auto it = m_ruleEnginePropertyMap.find( propertyName );
-                if( it != m_ruleEnginePropertyMap.end() )
+                auto it = m_ruleEnginePropertyMap.find(propertyName);
+                if (it != m_ruleEnginePropertyMap.end())
                 {
                     m_ruleEnginePropertyJson[PROPERTIES][*it] = newValueType->stringValue;
                 }
@@ -896,166 +890,155 @@ void ReadProperties::CreateTelemetryAndAlertJson( bool isAlertFlag, VALUE_TYPE *
         }
     }
     catch(nlohmann::json::exception &e)
-	{
-		logg.str("");
-		logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Error code :  " << e.id << " Error Messag : " << e.what();
-		std::cout << logg.str() << "\n\n";
-	}
-	catch( ... )
-	{
-		logg.str("");
-		logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Unknown exception occured.";
+    {
+        logg.str("");
+        logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Error code :  " << e.id << " Error Messag : " << e.what();
         std::cout << logg.str() << "\n\n";
-	}
+    }
+    catch(...)
+    {
+        logg.str("");
+        logg << "FileUploadWrapper::FormatAndUploadJson,  Message : Unknown exception occured.";
+        std::cout << logg.str() << "\n\n";
+    }
 }
 
-void ReadProperties::SetThreadStatus( bool threadStartStaus )
+// Set flag indicating if data fetch thread should run
+void ReadProperties::SetThreadStatus(bool threadStartStaus)
 {
-	m_threadStartStaus = threadStartStaus;
+    m_threadStartStaus = threadStartStaus;
 }
 
-void ReadProperties::SetDeviceProperties( nlohmann::json deviceProperties )
+// Set device configuration properties
+void ReadProperties::SetDeviceProperties(nlohmann::json deviceProperties)
 {
-	if( !deviceProperties.is_null() )
-	{
-		m_deviceProperties = deviceProperties;
-	}
+    if (!deviceProperties.is_null())
+    {
+        m_deviceProperties = deviceProperties;
+    }
 }
 
+// Start the thread that polls device states and generates telemetry/alert JSON
 void ReadProperties::StartDeviceStateGetterThread()
 {
-	std::stringstream logg;
-	m_threadObj = std::thread([this](){
-		while( m_ThreadRunning )
-		{
-			if( m_threadStartStaus )
-			{
-				if( m_connectionStatus )
-				{
-					/*
-					std::stringstream logg;
-					logg.str("");
-					logg << "ReadProperties::StartDeviceStateGetterThread() : m_connectionStatus success";
-					m_exceptionLoggerObj->LogDebug( logg.str() );
-					*/
+    std::stringstream logg;
+    m_threadObj = std::thread([this]()
+    {
+        while (m_ThreadRunning)
+        {
+            if (m_threadStartStaus && m_connectionStatus)
+            {
+                short noOfPropertiesRead = GetStates(); // Fetch states from device
 
-					short noOfPropertiesRead = GetStates();
-
-					if( noOfPropertiesRead > 0 )
-					{
-                        if( m_cmmonJson.is_null() )
-                        {
-                            sleep( m_pollingFreq/1000 );
-                            continue;
-                        }
-                        
-						if( !m_derivedPropertiesJson.is_null() )
-						{
-							AddDesiredPropertiesInTelemetry();
-						} 
-                        
-                        m_cmmonJson[m_deviceId]["ts"] = GetTimeStamp();
-                        
-                        for( auto itr2 = m_commandGroupStructMap.begin(); itr2 != m_commandGroupStructMap.end();itr2++)
-                        {
-                            ManageGroupData *obj = itr2->second;
-                            obj->SetDataJson( m_cmmonJson ); 
-                        }
-                        
-                        //senddata to common class
-                        //m_commonJsonInstance->SetSensorData( m_cmmonJson );
-                        
-                        //clear m_cmmonJson
-                        m_cmmonJson.clear();
-						
-						if( !m_alertJsonArray[DATA].empty() )
-						{
-							m_propertiesCB( m_alertJsonArray );
-							m_alertJsonArray["data"].clear();
-						}
-						
-						if( !m_ruleEnginePropertyJson[PROPERTIES].is_null() )
-						{
-                            std::stringstream logg;
-							std::cout << "m_ruleEnginePropertyJson Send to RuleEngine from ModbusTCP : " << m_ruleEnginePropertyJson << std::endl; // H1
-							m_propertiesCB( m_ruleEnginePropertyJson ); 
-							m_ruleEnginePropertyJson[PROPERTIES].clear();
-						}
-					}
-				}
-                else
+                if (noOfPropertiesRead > 0)
                 {
-                    if( m_connectionNotificationFlag )
+                    if (m_cmmonJson.is_null())
                     {
-                        m_connectionNotificationFlag = false;
-						
-						std::cout << "ReadProperties::StartDeviceStateGetterThread() - SendsNotificationToCloud(1) \n";
-                        
-						SendNotificationToCloud(1);
+                        sleep(m_pollingFreq / 1000);
+                        continue;
                     }
-                    
-                    ConnectToDevice();
+
+                    if (!m_derivedPropertiesJson.is_null())
+                    {
+                        AddDesiredPropertiesInTelemetry();
+                    }
+
+                    m_cmmonJson[m_deviceId]["ts"] = GetTimeStamp(); // Add timestamp
+
+                    // Update all group objects with common data
+                    for (auto itr2 = m_commandGroupStructMap.begin(); itr2 != m_commandGroupStructMap.end(); itr2++)
+                    {
+                        ManageGroupData *obj = itr2->second;
+                        obj->SetDataJson(m_cmmonJson);
+                    }
+
+                    // Clear after sending to avoid duplicate data
+                    m_cmmonJson.clear();
+
+                    // Send any pending alert JSONs
+                    if (!m_alertJsonArray[DATA].empty())
+                    {
+                        m_propertiesCB(m_alertJsonArray);
+                        m_alertJsonArray["data"].clear();
+                    }
+
+                    // Send rule engine properties if available
+                    if (!m_ruleEnginePropertyJson[PROPERTIES].is_null())
+                    {
+                        std::cout << "m_ruleEnginePropertyJson Send to RuleEngine from ModbusTCP : " << m_ruleEnginePropertyJson << std::endl;
+                        m_propertiesCB(m_ruleEnginePropertyJson);
+                        m_ruleEnginePropertyJson[PROPERTIES].clear();
+                    }
                 }
-			}
-            long pollinfreq = m_pollingFreq;
-			usleep( pollinfreq*1000 );
-		}
-		
-	});	
+            }
+            else if (!m_connectionStatus)
+            {
+                if (m_connectionNotificationFlag)
+                {
+                    m_connectionNotificationFlag = false;
+                    std::cout << "ReadProperties::StartDeviceStateGetterThread() - SendsNotificationToCloud(1) \n";
+                    SendNotificationToCloud(1);
+                }
+
+                ConnectToDevice(); // Try reconnecting
+            }
+
+            usleep(m_pollingFreq * 1000); // Delay based on polling frequency
+        }
+    });
 }
 
-
-void ReadProperties::SetConfig( nlohmann::json config )
+void ReadProperties::SetConfig(nlohmann::json config)
 {
-	try
-	{
-		std::string configJson = config[COMMAND];
-		transform(configJson.begin(), configJson.end(), configJson.begin(), ::tolower);
-		if( configJson == CHANGE_DEVICE_MODE )
-		{
-			nlohmann::json errorTelemetryModeJson;
-			std::string deviceMode = config[TELEMETRY_MODE];
-            
-            for( auto itr2 = m_commandGroupStructMap.begin(); itr2 != m_commandGroupStructMap.end();itr2++)
-            {
-                ManageGroupData *obj = itr2->second;
-                bool flag = false;
-                if( deviceMode == "turbo" )
-                {
-                    flag = true;
-                }
-                obj->SetTurboMode( m_turboTimeout, flag ); 
-            }
-		}
-		else if( configJson == "register_rule_device_properties" )
-		{
-            std::cout << "\nModbusTCP ReadProperties::SetConfig() config - " << config << std::endl;
-            nlohmann::json ruleEnginePersistancyJson;
-			for( auto& x : config["properties"].items() )
-			{
-                nlohmann::json t1Json = x.value();
-				std::string propertyName = t1Json["property"];
-				m_ruleEnginePropertyMap.insert( propertyName );
+    try
+    {
+        // Extract and convert command string to lowercase for uniformity
+        std::string configJson = config[COMMAND];
+        transform(configJson.begin(), configJson.end(), configJson.begin(), ::tolower);
 
-                ruleEnginePersistancyJson = ReadAndSetConfiguration( m_ruleEnginePropertiesFileName );
-                nlohmann::json jsonarr;
-                ruleEnginePersistancyJson["properties"].push_back(propertyName);
-			}
-            if( !ruleEnginePersistancyJson.is_null() )
+        // Handle device mode change
+        if (configJson == CHANGE_DEVICE_MODE)
+        {
+            std::string deviceMode = config[TELEMETRY_MODE];
+            bool enableTurbo = (deviceMode == "turbo");
+
+            // Iterate over each group and set turbo mode
+            for (auto& [groupName, groupObj] : m_commandGroupStructMap)
             {
-                WriteConfiguration( m_ruleEnginePropertiesFileName,ruleEnginePersistancyJson );
+                groupObj->SetTurboMode(m_turboTimeout, enableTurbo);
             }
-		}
-		else if( configJson == SET_VALUE_CANAGE )
-		{
-			m_changeValueState = config["scv"];
-		}
-	}
-	catch( nlohmann::json::exception &e )
-	{
-		std::cout <<"SetConfig() [ERROR]: " << e.id << " : " << e.what() << std::endl;
-		std::cout <<"SetConfig() [ERROR]: frequency_in_sec : " << config << std::endl;
-	}
+        }
+        // Register properties for rule engine persistence
+        else if (configJson == "register_rule_device_properties")
+        {
+            std::cout << "\nModbusTCP ReadProperties::SetConfig() config - " << config << std::endl;
+            nlohmann::json ruleEnginePersistancyJson = ReadAndSetConfiguration(m_ruleEnginePropertiesFileName);
+
+            // Extract properties and update local map
+            for (auto& item : config["properties"].items())
+            {
+                std::string propertyName = item.value()["property"];
+                m_ruleEnginePropertyMap.insert(propertyName);
+                ruleEnginePersistancyJson["properties"].push_back(propertyName);
+            }
+
+            // Write back updated rule engine configuration
+            if (!ruleEnginePersistancyJson.is_null())
+            {
+                WriteConfiguration(m_ruleEnginePropertiesFileName, ruleEnginePersistancyJson);
+            }
+        }
+        // Set state for value changes
+        else if (configJson == SET_VALUE_CANAGE)
+        {
+            m_changeValueState = config["scv"];
+        }
+    }
+    catch (nlohmann::json::exception& e)
+    {
+        std::cout << "SetConfig() [ERROR]: " << e.id << " : " << e.what() << std::endl;
+        std::cout << "SetConfig() [ERROR]: frequency_in_sec : " << config << std::endl;
+    }
 }
 
 void ReadProperties::RegisterPropertiesCB( std::function<void(nlohmann::json)> cb )
@@ -1063,259 +1046,174 @@ void ReadProperties::RegisterPropertiesCB( std::function<void(nlohmann::json)> c
 	m_propertiesCB = cb;
 }
 
-
-void ReadProperties::SendNotificationToCloud( int caseId, nlohmann::json config )
+void ReadProperties::SendNotificationToCloud(int caseId, nlohmann::json config)
 {
     nlohmann::json connectionFailJson;
-    
-    switch( caseId )
-    {
-        case 1:
-        {
-            connectionFailJson[TYPE] = "notification";
-            connectionFailJson[DEVICE_ID] = m_deviceId;
-            connectionFailJson[MESSAGE] = "PLC or Slave connection Failed";
-            connectionFailJson[EVENT] = "plc_connection_fail";
-            connectionFailJson[TIMESTAMP] = GetTimeStamp();
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-        }
-        break;
-        
-        case 2:
-        {
-            connectionFailJson[CONFIGURATION].clear();
-            if( config.is_null() )
-            {
-                connectionFailJson[SUB_JOB_ID] = m_telemetryModeSubJobId;
-                m_telemetryModeSubJobId = "";
-            }
-            else
-            {
-                connectionFailJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-            }
-            connectionFailJson[TYPE] = "notification";
-            connectionFailJson[MESSAGE] = "Successfully configured to normal mode";
-            connectionFailJson[CONFIGURATION][TELEMETRY_MODE] = "normal";
-            connectionFailJson[TIMESTAMP] = GetTimeStamp();
-            connectionFailJson[DEVICE_ID] = m_deviceId;
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-        }
-        break;
-        
-        /*case 3:
-        {
-            connectionFailJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-            connectionFailJson[TYPE] = "notification";
-            connectionFailJson[MESSAGE] = "Successfully configured to turbo mode";
-            connectionFailJson[CONFIGURATION][TELEMETRY_MODE] = config[TELEMETRY_MODE];
-            connectionFailJson[CONFIGURATION][TURBO_MODE_FREQUENCY] = m_turboModeFrequencyMiliSec/1000;
-            connectionFailJson[CONFIGURATION][TURBO_MODE_TIMEOUT] = m_turboModeTimeoutInMiliSec/1000;
-            connectionFailJson[DEVICE_ID] = m_deviceId;
-            connectionFailJson[TIMESTAMP] = GetTimeStamp();
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-        }
-        break;
-        case 4:
-        {
-            std::stringstream tempValue;
-            long pollingFreq = m_pollingFrequency/1000;
-            tempValue << pollingFreq;
-            connectionFailJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-            connectionFailJson[TYPE] = "error";
-            connectionFailJson[MESSAGE] = "Turbo mode configuration failed. Please set turbo_mode_frequency_in_sec is greater than or equal to " + tempValue.str() + " sec";
-            connectionFailJson[DEVICE_ID] = m_deviceId;
-            connectionFailJson[TIMESTAMP] = GetTimeStamp();
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-        }
-        break;
-        */
-        
-        case 5:
-        {
-            std::string deviceMode = config[TELEMETRY_MODE];
-            connectionFailJson[SUB_JOB_ID] = config[SUB_JOB_ID];
-            connectionFailJson[COMMAND_INFO] = m_commandJson;
-            connectionFailJson[TYPE] = "error";
-            connectionFailJson[MESSAGE] = "Already configured " + deviceMode + " mode.";
-            connectionFailJson[DEVICE_ID] = m_deviceId;
-            connectionFailJson[TIMESTAMP] = GetTimeStamp();
-        }
-        break;
-    }
-    
-    if( !connectionFailJson.is_null() )
-    {
-        m_propertiesCB( connectionFailJson );
-    }
-	
-}
 
+    switch (caseId)
+    {
+        case 1: // PLC/Slave connection failure
+            connectionFailJson = {
+                {TYPE, "notification"},
+                {DEVICE_ID, m_deviceId},
+                {MESSAGE, "PLC or Slave connection Failed"},
+                {EVENT, "plc_connection_fail"},
+                {TIMESTAMP, GetTimeStamp()},
+                {COMMAND_INFO, m_commandJson}
+            };
+            break;
+
+        case 2: // Successfully configured to normal mode
+            connectionFailJson[CONFIGURATION].clear();
+            connectionFailJson[SUB_JOB_ID] = config.is_null() ? m_telemetryModeSubJobId : config[SUB_JOB_ID];
+            m_telemetryModeSubJobId = "";
+            connectionFailJson.update({
+                {TYPE, "notification"},
+                {MESSAGE, "Successfully configured to normal mode"},
+                {CONFIGURATION, {{TELEMETRY_MODE, "normal"}}},
+                {TIMESTAMP, GetTimeStamp()},
+                {DEVICE_ID, m_deviceId},
+                {COMMAND_INFO, m_commandJson}
+            });
+            break;
+
+        case 5: // Already in requested mode
+            connectionFailJson = {
+                {SUB_JOB_ID, config[SUB_JOB_ID]},
+                {COMMAND_INFO, m_commandJson},
+                {TYPE, "error"},
+                {MESSAGE, "Already configured " + config[TELEMETRY_MODE].get<std::string>() + " mode."},
+                {DEVICE_ID, m_deviceId},
+                {TIMESTAMP, GetTimeStamp()}
+            };
+            break;
+    }
+
+    // Send notification via callback if valid
+    if (!connectionFailJson.is_null())
+    {
+        m_propertiesCB(connectionFailJson);
+    }
+}
 
 void ReadProperties::UpdateConfigFile()
 {
     try
     {
         std::string configFilePath = m_configFilePath + DEVICE_CONFIGURATION_JSON;
-        nlohmann::json config = ReadAndSetConfiguration( configFilePath );
-        
-        std::cout << "$$$$$$$$$$$$$$$$$$$$$   **********  \n" <<config << "\n***********************\n\n";
-        
-        if( config.is_null() )
-        {
-            nlohmann::json deviceconfig;
+        nlohmann::json config = ReadAndSetConfiguration(configFilePath);
 
-            deviceconfig["assets"][m_deviceId]["g1_ingestion_frequency_in_ms"] = 10000;
-            deviceconfig["assets"][m_deviceId]["g1_measurement_frequency_in_ms"] = 5000;
-            deviceconfig["assets"][m_deviceId]["g1_turbo_mode_frequency_in_ms"] = 5000;
-            deviceconfig["assets"][m_deviceId]["g2_ingestion_frequency_in_ms"] = 20000;
-            deviceconfig["assets"][m_deviceId]["g2_measurement_frequency_in_ms"] = 10000;
-            deviceconfig["assets"][m_deviceId]["g2_turbo_mode_frequency_in_ms"] = 10000;
-            deviceconfig["assets"][m_deviceId]["g3_ingestion_frequency_in_ms"] = 30000;
-            deviceconfig["assets"][m_deviceId]["g3_measurement_frequency_in_ms"] = 15000;
-            deviceconfig["assets"][m_deviceId]["g3_turbo_mode_frequency_in_ms"] = 15000;
-            deviceconfig["assets"][m_deviceId]["ingestion_settings_type"] = "all_props_at_fixed_interval";
-            deviceconfig["assets"][m_deviceId]["telemetry_mode"] = "normal";
-            deviceconfig["assets"][m_deviceId]["turbo_mode_timeout_in_milli_sec"] = 120000;
-            deviceconfig["assets"][m_deviceId]["turbo_mode_timeout_in_ms"] = 60000;
-            
-            WriteConfiguration( configFilePath ,deviceconfig);
-            config = deviceconfig;
-        }
-        
-        
-        
-        nlohmann::json twinReportedJson;
-        twinReportedJson[COMMAND_INFO] = m_commandJson;
-        twinReportedJson[TYPE] = "reported_twin";
-        twinReportedJson["apps"][m_processName][STATUS] = "Running";
-        
-        //Set Measurment frequency
-        if( config["assets"][m_deviceId].contains( G1_MEASUREMENT_FREQUENCY ) )
+        // If file is empty or unreadable, initialize defaults
+        if (config.is_null())
         {
-            m_grpStructObj1->measuredFrequency = config["assets"][m_deviceId][G1_MEASUREMENT_FREQUENCY];
+            nlohmann::json defaultConfig;
+            defaultConfig["assets"][m_deviceId] = {
+                {"g1_ingestion_frequency_in_ms", 10000},
+                {"g1_measurement_frequency_in_ms", 5000},
+                {"g1_turbo_mode_frequency_in_ms", 5000},
+                {"g2_ingestion_frequency_in_ms", 20000},
+                {"g2_measurement_frequency_in_ms", 10000},
+                {"g2_turbo_mode_frequency_in_ms", 10000},
+                {"g3_ingestion_frequency_in_ms", 30000},
+                {"g3_measurement_frequency_in_ms", 15000},
+                {"g3_turbo_mode_frequency_in_ms", 15000},
+                {"ingestion_settings_type", "all_props_at_fixed_interval"},
+                {"telemetry_mode", "normal"},
+                {"turbo_mode_timeout_in_milli_sec", 120000},
+                {"turbo_mode_timeout_in_ms", 60000}
+            };
+
+            WriteConfiguration(configFilePath, defaultConfig);
+            config = defaultConfig;
+        }
+
+        // Prepare reported twin payload
+        nlohmann::json twinReportedJson = {
+            {COMMAND_INFO, m_commandJson},
+            {TYPE, "reported_twin"},
+            {"apps", {
+                {m_processName, {
+                    {STATUS, "Running"}
+                }}
+            }}
+        };
+
+        // Set measurement and ingestion frequencies for G1, G2, G3
+        auto& asset = config["assets"][m_deviceId];
+        if (asset.contains(G1_MEASUREMENT_FREQUENCY))
+        {
+            m_grpStructObj1->measuredFrequency = asset[G1_MEASUREMENT_FREQUENCY];
             twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G1_MEASUREMENT_FREQUENCY] = m_grpStructObj1->measuredFrequency;
         }
-        
-        if( config["assets"][m_deviceId].contains( G2_MEASUREMENT_FREQUENCY ) )
+        if (asset.contains(G2_MEASUREMENT_FREQUENCY))
         {
-            m_grpStructObj2->measuredFrequency = config["assets"][m_deviceId][G2_MEASUREMENT_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G2_MEASUREMENT_FREQUENCY]  = m_grpStructObj2->measuredFrequency;
+            m_grpStructObj2->measuredFrequency = asset[G2_MEASUREMENT_FREQUENCY];
+            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G2_MEASUREMENT_FREQUENCY] = m_grpStructObj2->measuredFrequency;
+        }
+        if (asset.contains(G3_MEASUREMENT_FREQUENCY))
+        {
+            m_grpStructObj3->measuredFrequency = asset[G3_MEASUREMENT_FREQUENCY];
+            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G3_MEASUREMENT_FREQUENCY] = m_grpStructObj3->measuredFrequency;
         }
 
-        if( config["assets"][m_deviceId].contains( G3_MEASUREMENT_FREQUENCY ) )
+        // Set ingestion frequency
+        if (asset.contains(G1_INGESTION_FREQUENCY))
         {
-            m_grpStructObj3->measuredFrequency = config["assets"][m_deviceId][G3_MEASUREMENT_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G3_MEASUREMENT_FREQUENCY]  = m_grpStructObj3->measuredFrequency;
-        }
-        
-        //set ingation frequency
-        if( config["assets"][m_deviceId].contains( G1_INGESTION_FREQUENCY ) )
-        {
-            m_grpStructObj1->uploadFrequency = config["assets"][m_deviceId][G1_INGESTION_FREQUENCY];
+            m_grpStructObj1->uploadFrequency = asset[G1_INGESTION_FREQUENCY];
             twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G1_INGESTION_FREQUENCY] = m_grpStructObj1->uploadFrequency;
         }
-
-        if( config["assets"][m_deviceId].contains( G2_INGESTION_FREQUENCY ) )
+        if (asset.contains(G2_INGESTION_FREQUENCY))
         {
-            m_grpStructObj2->uploadFrequency = config["assets"][m_deviceId][G2_INGESTION_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G2_INGESTION_FREQUENCY]  = m_grpStructObj2->uploadFrequency;
+            m_grpStructObj2->uploadFrequency = asset[G2_INGESTION_FREQUENCY];
+            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G2_INGESTION_FREQUENCY] = m_grpStructObj2->uploadFrequency;
+        }
+        if (asset.contains(G3_INGESTION_FREQUENCY))
+        {
+            m_grpStructObj3->uploadFrequency = asset[G3_INGESTION_FREQUENCY];
+            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G3_INGESTION_FREQUENCY] = m_grpStructObj3->uploadFrequency;
         }
 
-        if( config["assets"][m_deviceId].contains( G3_INGESTION_FREQUENCY ) )
+        // Turbo mode frequency
+        if (asset.contains(G1_TURBO_MODE_FREQUENCY))
+            m_grpStructObj1->turboModeFrequency = asset[G1_TURBO_MODE_FREQUENCY];
+        if (asset.contains(G2_TURBO_MODE_FREQUENCY))
+            m_grpStructObj2->turboModeFrequency = asset[G2_TURBO_MODE_FREQUENCY];
+        if (asset.contains(G3_TURBO_MODE_FREQUENCY))
+            m_grpStructObj3->turboModeFrequency = asset[G3_TURBO_MODE_FREQUENCY];
+
+        // Turbo mode timeout
+        if (asset.contains("turbo_mode_timeout_in_ms"))
         {
-            m_grpStructObj3->uploadFrequency = config["assets"][m_deviceId][G3_INGESTION_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G3_INGESTION_FREQUENCY]  = m_grpStructObj3->uploadFrequency;
-        }
-        
-        //set Turbo mode
-        if( config["assets"][m_deviceId].contains( G1_TURBO_MODE_FREQUENCY ) )
-        {
-            m_grpStructObj1->turboModeFrequency = config["assets"][m_deviceId][G1_TURBO_MODE_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G1_TURBO_MODE_FREQUENCY]  = m_grpStructObj1->turboModeFrequency;
+            m_turboTimeout = asset["turbo_mode_timeout_in_ms"];
+            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId]["turbo_mode_timeout_in_ms"] = m_turboTimeout;
         }
 
-        if( config["assets"][m_deviceId].contains( G2_TURBO_MODE_FREQUENCY ) )
+        // Ingestion setting type
+        if (asset.contains(INGESTION_SETTINGS_TYPE))
         {
-            m_grpStructObj2->turboModeFrequency = config["assets"][m_deviceId][G2_TURBO_MODE_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G2_TURBO_MODE_FREQUENCY]  = m_grpStructObj2->turboModeFrequency;
+            std::string type = asset[INGESTION_SETTINGS_TYPE];
+            m_changeValueState = (type != ALL_PROPERTIES);
         }
 
-        if( config["assets"][m_deviceId].contains( G3_TURBO_MODE_FREQUENCY ) )
+        // Determine lowest measurement frequency for polling
+        m_pollingFreq = std::min({
+            m_grpStructObj1->measuredFrequency,
+            m_grpStructObj2->measuredFrequency,
+            m_grpStructObj3->measuredFrequency
+        });
+
+        // Apply group settings
+        for (auto& [group, grpObj] : m_commandGroupStructMap)
         {
-            m_grpStructObj3->turboModeFrequency = config["assets"][m_deviceId][G3_TURBO_MODE_FREQUENCY];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][G3_TURBO_MODE_FREQUENCY]  = m_grpStructObj3->turboModeFrequency;
+            // logic to call grpObj->SetGroupDetails(...) based on group name
         }
-        
-        if( config["assets"][m_deviceId].contains( "turbo_mode_timeout_in_ms" ) )
-        {
-            m_turboTimeout = config["assets"][m_deviceId]["turbo_mode_timeout_in_ms"];
-            twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId]["turbo_mode_timeout_in_ms"]  = m_turboTimeout;
-        }
-        
-        if( config["assets"][m_deviceId].contains( INGESTION_SETTINGS_TYPE ) )
-        {
-            std::string strType = config["assets"][m_deviceId][INGESTION_SETTINGS_TYPE];
-            if( strType == ALL_PROPERTIES )
-            {
-                m_changeValueState = false;
-            }
-            else
-            {
-                m_changeValueState = true;
-            }
-        }
-        
-         std::string type = ALL_PROPERTIES;
-        if( m_changeValueState )
-        {
-            type = CHANGED_PROPERTIES;
-        }
-            
-        if( m_grpStructObj1->measuredFrequency <= m_grpStructObj2->measuredFrequency && m_grpStructObj1->measuredFrequency <= m_grpStructObj3->measuredFrequency) 
-        { 
-            m_pollingFreq = m_grpStructObj1->measuredFrequency;
-        }
-        else if( m_grpStructObj2->measuredFrequency <= m_grpStructObj1->measuredFrequency && m_grpStructObj2->measuredFrequency <= m_grpStructObj3->measuredFrequency) 
-        {
-            m_pollingFreq = m_grpStructObj2->measuredFrequency;
-        }
-        else 
-        {
-            m_pollingFreq = m_grpStructObj3->measuredFrequency;
-        }    
-        
-        for( auto itr = m_commandGroupStructMap.begin(); itr != m_commandGroupStructMap.end(); ++itr )
-        {
-            ManageGroupData *grpObj = itr->second;
-            if( itr->first == "g1" )
-            {
-                grpObj->SetGroupDetails( m_grpStructObj1 );
-            }
-            
-            if( itr->first == "g2" )
-            {
-                grpObj->SetGroupDetails( m_grpStructObj2 );
-            }
-            
-            if( itr->first == "g3" )
-            {
-                grpObj->SetGroupDetails( m_grpStructObj3 );
-            }
-        }
-        
-        twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][TELEMETRY_MODE] = "normal";
-        twinReportedJson["apps"][m_processName]["asset_configuration"][m_deviceId][INGESTION_SETTINGS_TYPE] = type;
-        //m_propertiesCB( twinReportedJson );
+
+        // Optional: Report twin to cloud, log config, etc.
     }
-    catch( nlohmann::json::exception &e )
-	{
-		std::cout <<"ReadProperties::UpdateConfigFile() : " << e.id << " : " << e.what() << std::endl;
-	}
-    catch( ...)
-	{
-		std::cout <<"ReadProperties::UpdateConfigFile() : frequency_in_sec : " << std::endl;
-	}
+    catch (const std::exception& e)
+    {
+        std::cerr << "UpdateConfigFile() [ERROR]: " << e.what() << std::endl;
+    }
 }
 
 void ReadProperties::PropertiesReceiver( nlohmann::json jsonObj )
