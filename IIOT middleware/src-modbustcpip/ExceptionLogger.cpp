@@ -1,151 +1,172 @@
 #include "ExceptionLogger.h"
 
-#define MESSAGE_STRING_LENGTH			1000
-#define LOGFILE_LENGTH					50
+#define MESSAGE_STRING_LENGTH 1000
+#define LOGFILE_LENGTH 50
 
-ExceptionLogger* ExceptionLogger::m_exceptionLoggerInstance = nullptr;;
+// Initialize static member to hold singleton instance
+ExceptionLogger* ExceptionLogger::m_exceptionLoggerInstance = nullptr;
 
+// Singleton pattern: returns the single instance of ExceptionLogger
 ExceptionLogger* ExceptionLogger::GetInstance()
 {
-	 if (!m_exceptionLoggerInstance)
-	 {
+	if (!m_exceptionLoggerInstance)
+	{
 		m_exceptionLoggerInstance = new ExceptionLogger();
-	 }
-	 return m_exceptionLoggerInstance;
+	}
+	return m_exceptionLoggerInstance;
 }
 
+// Constructor
 ExceptionLogger::ExceptionLogger()
 {
-	
+	// Nothing to initialize here for now
 }
 
+// Destructor: closes the log file if open
 ExceptionLogger::~ExceptionLogger()
 {
 	m_logFile.close();
-
 }
 
-//Log exception in Exception File
-void ExceptionLogger::LogMessage ( std::string info  )
+// Logs a general message to the log file with timestamp and app name
+void ExceptionLogger::LogMessage(std::string info)
 {
 	try
 	{
-		if ( m_logFile.fail() )	// previous operation failed, close file and open again
+		// If previous file operation failed, reopen the file
+		if (m_logFile.fail())
 		{
 			OpenFile();
 		}
-		
-		if( m_logFile )
+
+		// Proceed only if file is open and ready
+		if (m_logFile)
 		{
-			// get date and time 
 			char timeStr[MESSAGE_STRING_LENGTH];
-			struct tm *newTime;
+			struct tm* newTime;
 			time_t longTime;
-			time( &longTime );                
-			newTime = localtime( &longTime );
 
-			// create date time string
-			strftime( timeStr, MESSAGE_STRING_LENGTH, "[%d-%m-%Y %H:%M:%S]  ", newTime );
+			// Get current local time
+			time(&longTime);
+			newTime = localtime(&longTime);
 
-			//check date change for generating new file everyday
+			// Format time string
+			strftime(timeStr, MESSAGE_STRING_LENGTH, "[%d-%m-%Y %H:%M:%S]  ", newTime);
+
+			// Check if date has changed and switch log file if necessary
 			CheckDateChange();
-			// write to file
+
+			// Construct full log message
 			std::string exceptionLog = timeStr;
 			exceptionLog += "[" + m_appName + "]  " + info;
+
+			// Log to file and console
 			m_logFile << exceptionLog << std::endl;
-            std::cout << exceptionLog << "\n\n";
+			std::cout << exceptionLog << "\n\n";
 			m_logFile.flush();
 		}
 	}
-	catch( ... )
+	catch (...)
 	{
-		std::cout << "ExceptionLogger::LogMessage()  Exception occured while logging.\n";
+		std::cout << "ExceptionLogger::LogMessage()  Exception occurred while logging.\n";
 	}
 }
 
-void ExceptionLogger::LogError ( std::string info  )
+// Logs an error message
+void ExceptionLogger::LogError(std::string info)
 {
 	std::string message = "[ERROR]  " + info;
-	LogMessage( message );
+	LogMessage(message);
 }
 
-void ExceptionLogger::LogException ( std::string info  )
+// Logs an exception
+void ExceptionLogger::LogException(std::string info)
 {
 	std::string message = "[EXCEPTION]  " + info;
-	LogMessage( message );
+	LogMessage(message);
 }
 
-void ExceptionLogger::LogInfo ( std::string info  )
+// Logs general info
+void ExceptionLogger::LogInfo(std::string info)
 {
 	std::string message = "[INFO]  " + info;
-	LogMessage( message );
+	LogMessage(message);
 }
 
-void ExceptionLogger::LogDebug ( std::string info )
+// Logs debug information
+void ExceptionLogger::LogDebug(std::string info)
 {
 	std::string message = "[DEBUG]  " + info;
-	LogMessage( message );
+	LogMessage(message);
 }
 
-// generate date string for current date. 
-// string format is dd-mm-yyyy 
+// Generates the current date string in dd-mm-yyyy format
 std::string ExceptionLogger::GenerateCurrentDateStr()
 {
 	time_t currTime;
-	time( &currTime );
-	struct tm *timeStruct = localtime( &currTime );
+	time(&currTime);
+	struct tm* timeStruct = localtime(&currTime);
 
 	char dateStr[12];
-	// create string
-	strftime( dateStr, 11, "%d-%m-%Y", timeStruct );
+	strftime(dateStr, 11, "%d-%m-%Y", timeStruct);
 	std::string str = dateStr;
 	return str;
 }
 
-bool ExceptionLogger::CheckDateChange ()
+// Checks if the date has changed, and opens a new log file accordingly
+bool ExceptionLogger::CheckDateChange()
 {
-	//check for time to restart the computer	
-	if ( m_logFileDate == GenerateCurrentDateStr() )
+	if (m_logFileDate == GenerateCurrentDateStr())
 	{
 		return false;
 	}
-	m_logFileDate = GenerateCurrentDateStr() ;
+	m_logFileDate = GenerateCurrentDateStr();
 	OpenFile();
 	return true;
 }
 
-void ExceptionLogger::Init ( std::string exceptionLogFileName, std::string appName )
+// Initializes the logger with a log file name and application name
+void ExceptionLogger::Init(std::string exceptionLogFileName, std::string appName)
 {
-	m_logFileName = LOG_DIRECTORY + exceptionLogFileName ;
-	m_logFileDate = GenerateCurrentDateStr() ;
+	m_logFileName = LOG_DIRECTORY + exceptionLogFileName;
+	m_logFileDate = GenerateCurrentDateStr();
 	m_appName = appName;
 
-	mkdir ( LOG_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO );
-	chmod( LOG_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO );
+	// Create log directory with full permissions
+	mkdir(LOG_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+	chmod(LOG_DIRECTORY, S_IRWXU | S_IRWXG | S_IRWXO);
+
+	// Open the log file
 	OpenFile();
-	chmod( exceptionLogFileName.c_str(), S_IRWXU | S_IRWXG | S_IRWXO );
+
+	// Set permissions on the log file
+	chmod(exceptionLogFileName.c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
 }
 
-
+// Opens or reopens the log file using the current date
 void ExceptionLogger::OpenFile()
 {
-	//log file name "PLSLogFile%d-%m-%Y.txt"
+	// Construct log file name using base name + date
 	std::string fileName = m_logFileName + "_";
 	fileName += m_logFileDate;
 	fileName += ".log";
-	//unexpected Files are created 
-	if(fileName.length() < 16)
+
+	// Safety check: avoid opening invalid file names
+	if (fileName.length() < 16)
 		return;
-	
-	if ( m_logFile.is_open() )
+
+	// Close previously opened file
+	if (m_logFile.is_open())
 	{
 		m_logFile.close();
 	}
-	
-	m_logFile.open( fileName.c_str(), std::ios::out | std::ios::app );
-	if ( m_logFile.fail() )
+
+	// Open new log file in append mode
+	m_logFile.open(fileName.c_str(), std::ios::out | std::ios::app);
+
+	// If opening fails, log the issue to console
+	if (m_logFile.fail())
 	{
-		printf("Could not open exception log file. No exceptions will be logged  : filename : %s!!!\n",fileName.c_str()); 
+		printf("Could not open exception log file. No exceptions will be logged  : filename : %s!!!\n", fileName.c_str());
 	}
 }
-
