@@ -250,53 +250,10 @@ short DataCacherManager::backup_procedure(std::vector<CAL_DB> &dynamic_db_list, 
 			
 			if (files_list>730)
 			{
-				std::cout << "Entering test case 1" << std::endl;
 				rm_oldfile_from_database(first_item, filepath);
 			}
-			
-			//TODO
-			/*
-			if(abs(first_item.calendar_tm.tm_hour - it->calendar_tm.tm_hour) >= 1)
-			{
-				std::cout << "Entering test case 2" << std::endl;
-				rm_oldfile_from_database(first_item, filepath);
-			}
-			
-			//For february month
-
-			if ((it->calendar_tm.tm_mon == 3) && (first_item.calendar_tm.tm_mon == 2) && (abs(it->calendar_tm.tm_mday - first_item.calendar_tm.tm_mday) == 3 || abs(it->calendar_tm.tm_mday - first_item.calendar_tm.tm_mday) == 2))
-			{
-				std::cout << "Entering test case 3" << std::endl;
-				rm_oldfile_from_database(first_item, filepath);
-				break;
-			}
-			
-			//For rest of the months
-			
-			if (abs(it->calendar_tm.tm_mon - first_item.calendar_tm.tm_mon) > 1)
-			{
-				std::cout << "Entering test case 4" << std::endl;
-				rm_oldfile_from_database(first_item, filepath);
-				break;
-			}
-			
-			if (abs(it->calendar_tm.tm_mon - first_item.calendar_tm.tm_mon) == 1 && abs(it->calendar_tm.tm_mday - first_item.calendar_tm.tm_mday) <= 1)
-			{
-				std::cout << "Entering test case 5" << std::endl;
-				rm_oldfile_from_database(first_item, filepath);
-				break;
-			}
-			 * */
-		}
-		
-		{
 			//std::lock_guard<std::mutex> lock(mtx);
 			dynamic_db_list.clear();
-			/*
-			std::ofstream ofs;
-			ofs.open(filename, std::ofstream::out | std::ofstream::trunc);
-			ofs.close();
-			*/
 			asset.clear();
 			files_list = 0;
 		}
@@ -430,9 +387,7 @@ void DataCacherManager::ReceiveSubscribedData( std::string data )
 		}
 		
 		logg.str("");
-		logg << "********** \n"; 
 		logg << "DataCacherManager::ReceiveSubscribedData()  one month data backup invokes ";
-		logg << "**********";
 		m_exceptionLoggerObj->LogDebug( logg.str() ); // H1
 		
 		if( commandSchema == DEVICE_DATA_BACKUP )
